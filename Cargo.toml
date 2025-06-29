@@ -30,7 +30,7 @@ version = "1"
 default-features = false
 
 [dependencies.wgpu]
-version = "22.0"
+workspace = true
 features = ["spirv"]
 
 [build-dependencies]
@@ -105,3 +105,5 @@ version = "0.5.1"
 path = "."
 [workspace.dependencies.zosimos-lang]
 path = "lib/lang"
+[workspace.dependencies.wgpu]
+version = "25.0"
