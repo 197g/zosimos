@@ -2433,7 +2433,7 @@ impl Descriptors {
         &'set self,
         desc: &program::BindGroupLayoutDescriptor,
         buf: &'set mut Vec<wgpu::BindGroupLayoutEntry>,
-    ) -> Result<wgpu::BindGroupLayoutDescriptor<'_>, StepError> {
+    ) -> Result<wgpu::BindGroupLayoutDescriptor<'set>, StepError> {
         buf.clear();
         buf.extend_from_slice(&desc.entries);
         Ok(wgpu::BindGroupLayoutDescriptor {
@@ -2521,7 +2521,7 @@ impl Descriptors {
         &'set self,
         desc: &program::PipelineLayoutDescriptor,
         buf: &'set mut Vec<&'set wgpu::BindGroupLayout>,
-    ) -> Result<wgpu::PipelineLayoutDescriptor<'_>, StepError> {
+    ) -> Result<wgpu::PipelineLayoutDescriptor<'set>, StepError> {
         buf.clear();
 
         for &layout in &desc.bind_group_layouts {
@@ -2569,7 +2569,7 @@ impl Descriptors {
         &'set self,
         desc: &program::FragmentState,
         buf: &'set mut Vec<Option<wgpu::ColorTargetState>>,
-    ) -> Result<wgpu::FragmentState<'_>, StepError> {
+    ) -> Result<wgpu::FragmentState<'set>, StepError> {
         buf.clear();
         buf.extend(desc.targets.iter().cloned().map(Some));
         Ok(wgpu::FragmentState {
