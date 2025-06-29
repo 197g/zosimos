@@ -1,9 +1,13 @@
 # Zosimos
 
-A library for common image operations, so quick and embeddable that you might
-barely notice it running. At least that's the goal. The implementation uses
-pre-built GPU pipelines, the same you will find used in video games, to wrap an
-image manipulation interface more familiar from CPU-based libraries.
+Zosimos is a statically typed language with an embeddable interpreter for
+raster graphics compositing pipelines. Built on Rust's `wgpu` to target WebGPU
+it abstracts, through native capabilities or emulation, color-space aware
+editing capabilities across platforms including the web. The implementation
+builds on SPIR-V graphics and compute shaders to execute largely asynchronously
+and close to hardware capabilities. The user facing programming language
+provides an image manipulation interface with operations similar to those found
+in GEGL and imagemagick.
 
 Plan: See <docs/roadmap.md>.
 
