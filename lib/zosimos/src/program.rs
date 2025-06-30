@@ -1007,6 +1007,14 @@ pub enum CompileError {
 #[derive(Debug)]
 pub struct MismatchError {}
 
+impl core::fmt::Display for MismatchError {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "No matching adapter for program and adapter options")
+    }
+}
+
+impl core::error::Error for MismatchError {}
+
 /// Prepare program execution with a specific pool.
 ///
 /// Some additional assembly and configuration might be required and possible. For example choose
