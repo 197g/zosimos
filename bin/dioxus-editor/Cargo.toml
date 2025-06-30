@@ -1,0 +1,16 @@
+[package]
+name = "zosimos-dioxus-editor"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1.0.197", features = ["derive"] }
+dioxus = { version = "0.6.3", features = ["fullstack"] }
+
+# Debug
+dioxus-logger = "0.6.2"
+
+[features]
+default = []
+server = ["dioxus/server"]
+web = ["dioxus/web"]
