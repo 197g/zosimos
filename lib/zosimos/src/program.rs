@@ -1256,6 +1256,8 @@ impl Program {
             // FIXME: make the use of this configurable.
             required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
             memory_hints: wgpu::MemoryHints::Performance,
+            // FIXME: weeeee that will become amazing.
+            trace: wgpu::Trace::Off,
         }
     }
 
@@ -1738,7 +1740,7 @@ impl Launcher<'_> {
 
     /// Really launch, potentially failing if configuration or inputs were missing etc.
     pub fn launch(mut self, adapter: &wgpu::Adapter) -> Result<run::Execution, LaunchError> {
-        let request = adapter.request_device(&self.program.device_descriptor(), None);
+        let request = adapter.request_device(&self.program.device_descriptor());
 
         // For all inputs check that they have now been supplied.
         for high in &self.program.ops {

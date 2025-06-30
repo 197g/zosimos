@@ -1016,7 +1016,11 @@ impl Executable {
     pub fn launch(&self, mut env: Environment) -> Result<Execution, StartError> {
         log::info!("Instructions {:#?}", self.instructions);
         self.check_satisfiable(&mut env)?;
-        env.gpu.device().start_capture();
+        // FIXME: I might just need this for sanity. Will be removed. But incompatible with
+        // forbid(unsafe_code) and that is more important to me right now.
+        //
+        // #[cfg(debug_assertions)]
+        // unsafe { env.gpu.device().start_graphics_debugger_capture() };
 
         Ok(Execution {
             gpu: env.gpu.into(),
@@ -1046,7 +1050,8 @@ impl Executable {
     /// Run the executable but take all by value.
     pub fn launch_once(self, mut env: Environment) -> Result<Execution, StartError> {
         self.check_satisfiable(&mut env)?;
-        env.gpu.device().start_capture();
+        // FIXME: I might just need this for sanity. See above usage
+        // env.gpu.device().start_graphics_debugger_capture();
 
         Ok(Execution {
             gpu: env.gpu.into(),
@@ -1344,7 +1349,8 @@ impl Environment<'_> {
 
 impl Execution {
     pub(crate) fn new(init: InitialState) -> Self {
-        init.device.start_capture();
+        // See other use of `start_graphics_debugger_capture()`
+        // init.device.start_capture();
 
         let range = init.info.functions[&init.entry_point].range.clone();
         Execution {
@@ -1473,7 +1479,8 @@ impl Execution {
     /// Stop the execution, depositing all resources into the provided pool.
     #[must_use = "You won't get the ids of outputs."]
     pub fn retire_gracefully(self, pool: &mut Pool) -> Retire<'_> {
-        self.gpu.with_gpu(|gpu| gpu.device().stop_capture());
+        // See use of `start_graphics_debugger_capture()`
+        // self.gpu.with_gpu(|gpu| gpu.device().stop_capture());
 
         Retire {
             execution: self,
@@ -1701,7 +1708,9 @@ impl Host {
                     mip_level_count: None,
                     base_array_layer: 0,
                     array_layer_count: None,
+                    usage: None,
                 };
+
                 let view = texture.create_view(&desc);
                 self.descriptors.texture_views.push(view);
                 Ok(Submissions::default())
@@ -1728,6 +1737,7 @@ impl Host {
                     mip_level_count: None,
                     base_array_layer: 0,
                     array_layer_count: None,
+                    usage: None,
                 };
 
                 let view = texture.create_view(&desc);
@@ -1950,9 +1960,9 @@ impl Host {
 
                     encoder.copy_texture_to_buffer(
                         texture.as_image_copy(),
-                        wgpu::ImageCopyBufferBase {
+                        wgpu::TexelCopyBufferInfo {
                             buffer: &self.descriptors.buffers[copy_dst_buffer.0],
-                            layout: wgpu::ImageDataLayout {
+                            layout: wgpu::TexelCopyBufferLayout {
                                 bytes_per_row: Some(bytes_per_row as u32),
                                 offset: 0,
                                 rows_per_image: Some(size.1),
@@ -2188,9 +2198,9 @@ impl Host {
                         gpu.with_gpu(|gpu| gpu.device().create_command_encoder(&descriptor));
 
                     encoder.copy_buffer_to_texture(
-                        wgpu::ImageCopyBufferBase {
+                        wgpu::TexelCopyBufferInfo {
                             buffer: &self.descriptors.buffers[copy_src_buffer.0],
-                            layout: wgpu::ImageDataLayout {
+                            layout: wgpu::TexelCopyBufferLayout {
                                 bytes_per_row: Some(bytes_per_row as u32),
                                 offset: 0,
                                 rows_per_image: Some(size.1),
@@ -2433,7 +2443,7 @@ impl Descriptors {
         &'set self,
         desc: &program::BindGroupLayoutDescriptor,
         buf: &'set mut Vec<wgpu::BindGroupLayoutEntry>,
-    ) -> Result<wgpu::BindGroupLayoutDescriptor<'_>, StepError> {
+    ) -> Result<wgpu::BindGroupLayoutDescriptor<'set>, StepError> {
         buf.clear();
         buf.extend_from_slice(&desc.entries);
         Ok(wgpu::BindGroupLayoutDescriptor {
@@ -2521,7 +2531,7 @@ impl Descriptors {
         &'set self,
         desc: &program::PipelineLayoutDescriptor,
         buf: &'set mut Vec<&'set wgpu::BindGroupLayout>,
-    ) -> Result<wgpu::PipelineLayoutDescriptor<'_>, StepError> {
+    ) -> Result<wgpu::PipelineLayoutDescriptor<'set>, StepError> {
         buf.clear();
 
         for &layout in &desc.bind_group_layouts {
@@ -2559,7 +2569,7 @@ impl Descriptors {
                 .shaders
                 .get(desc.vertex_module)
                 .ok_or_else(|| StepError::InvalidInstruction(line!()))?,
-            entry_point: desc.entry_point,
+            entry_point: Some(desc.entry_point),
             buffers: buf,
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         })
@@ -2569,7 +2579,7 @@ impl Descriptors {
         &'set self,
         desc: &program::FragmentState,
         buf: &'set mut Vec<Option<wgpu::ColorTargetState>>,
-    ) -> Result<wgpu::FragmentState<'_>, StepError> {
+    ) -> Result<wgpu::FragmentState<'set>, StepError> {
         buf.clear();
         buf.extend(desc.targets.iter().cloned().map(Some));
         Ok(wgpu::FragmentState {
@@ -2577,7 +2587,7 @@ impl Descriptors {
                 .shaders
                 .get(desc.fragment_module)
                 .ok_or_else(|| StepError::InvalidInstruction(line!()))?,
-            entry_point: desc.entry_point,
+            entry_point: Some(desc.entry_point),
             targets: buf,
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         })
@@ -2587,14 +2597,14 @@ impl Descriptors {
         &self,
         buffer: DeviceBuffer,
         layout: &ByteLayout,
-    ) -> Result<wgpu::ImageCopyBuffer<'_>, StepError> {
+    ) -> Result<wgpu::TexelCopyBufferInfo, StepError> {
         let buffer = match self.buffers.get(buffer.0) {
             None => return Err(StepError::InvalidInstruction(line!())),
             Some(buffer) => buffer,
         };
-        Ok(wgpu::ImageCopyBufferBase {
+        Ok(wgpu::TexelCopyBufferInfo {
             buffer,
-            layout: wgpu::ImageDataLayout {
+            layout: wgpu::TexelCopyBufferLayout {
                 bytes_per_row: Some(layout.row_stride as u32),
                 offset: 0,
                 rows_per_image: Some(layout.height),
@@ -2602,12 +2612,12 @@ impl Descriptors {
         })
     }
 
-    fn texture(&self, texture: DeviceTexture) -> Result<wgpu::ImageCopyTexture<'_>, StepError> {
+    fn texture(&self, texture: DeviceTexture) -> Result<wgpu::TexelCopyTextureInfo, StepError> {
         let texture = match self.textures.get(texture.0) {
             None => return Err(StepError::InvalidInstruction(line!())),
             Some(texture) => texture,
         };
-        Ok(wgpu::ImageCopyTextureBase {
+        Ok(wgpu::TexelCopyTextureInfo {
             texture,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
@@ -3243,7 +3253,7 @@ where
             ) -> core::task::Poll<F::Output> {
                 self.as_ref()
                     .device
-                    .with_gpu(|gpu| gpu.device().poll(wgpu::Maintain::Poll));
+                    .with_gpu(|gpu| gpu.device().poll(wgpu::PollType::Poll));
                 // Ugh, noooo...
                 ctx.waker().wake_by_ref();
                 Pin::new(&mut self.get_mut().future).poll(ctx)

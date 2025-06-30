@@ -4,7 +4,6 @@ version = "0.0.0"
 authors = ["Andreas Molzer <andreas.molzer@gmx.de>"]
 edition = "2021"
 license = "MPL-2.0"
-resolver = "2"
 
 # Wasm compatibility following, roughly
 # <https://sotrh.github.io/learn-wgpu/beginner/tutorial1-window/#the-code>
@@ -16,8 +15,8 @@ name = "zosimos-editor"
 path = "src/main.rs"
 
 
-[dependencies.zosimos]
-path = "../../"
+[dependencies]
+zosimos.workspace = true
 
 [dependencies.arc-swap]
 version = "1.6"
@@ -37,7 +36,7 @@ version = "1.1"
 [dependencies.winit]
 version = "0.30"
 [dependencies.wgpu]
-version = "22.0"
+workspace = true
 
 [dependencies.env_logger]
 version = "0.9.0"
@@ -47,10 +46,10 @@ version = "0.9.0"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_log = { version = "0.2.0" }
 console_error_panic_hook = { version = "0.1.7" }
-wgpu = { version = "22.0", features = ["webgl"]}
-wasm-bindgen = "=0.2.93"
+wgpu = { version = "*", features = ["webgl"]}
+wasm-bindgen = "^0.2.97"
 wasm-bindgen-futures = "0.4.42"
-web-sys = { version = "=0.3.70", features = [
+web-sys = { version = "^0.3.74", features = [
     "Document",
     "Window",
     "Element",

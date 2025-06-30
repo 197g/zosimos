@@ -21,6 +21,10 @@ We want documentation on <http://docs.rs/zosimos>.
   Investigate the ergonomics by changing some explicitly enumerated built-ins
   that could be runtime.
   - [ ] Proper trait bounds on parameters.
+  - [ ] Slim down the command.rs module (>3.5k lines at the moment).
+- [ ] Real world professional pipeline operations:
+  - [ ] Gain maps
+  - [ ] Vignette removal
 - [ ] An explicit treatment of the 'working color space'. Some operators that
   operate on channels are completely oblivious to whether the image is passed
   in a special channel encoding. For instance, an Oklab may be passed as Lab or

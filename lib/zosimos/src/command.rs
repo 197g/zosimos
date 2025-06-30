@@ -260,6 +260,8 @@ pub(crate) enum UnaryOp {
     /// This is a partial method for CIE XYZ-ish color spaces. Note that ICC requires adaptation to
     /// D50 for example as the reference color space.
     ChromaticAdaptation(ChromaticAdaptation),
+    /// Op(T) = T
+    Vignette(VignetteRemoval),
     /// Op(T) = T[.texel=texel]
     /// And the byte width of new texel must be consistent with the current byte width.
     Transmute,
@@ -284,6 +286,10 @@ pub(crate) enum BinaryOp {
     /// Sample from a palette based on the color value of another image.
     /// Op[T, U] = T
     Palette(shaders::PaletteShader),
+    /// Apply gain map.
+    ///
+    /// Op[T, U] = T
+    GainMap(GainMap),
 }
 
 /// A rectangle in `u32` space.
@@ -439,6 +445,67 @@ pub enum ChromaticAdaptationMethod {
     BradfordVonKries,
     /// Bradford's originally intended adaptation.
     BradfordNonLinear,
+}
+
+/// Remove spherical differences in effective irradiation.
+///
+/// There are a handful of common models for the difference in apparent pixel brightness caused by
+/// this effect. These are probably not accurate to the actual optics and build of your camera.
+/// Realistically one should calibrate the method to known images or between a target sequence—and
+/// in particular choose a good enough model in this step.
+///
+/// Note that vignetting is caused by the physical make of the camera and lense system, e.g.
+/// partial shadowing of light paths into a pixel by the shutter and lense body. That is it will
+/// *very* across different focal lengths and lenses.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub enum VignetteRemoval {
+    /// The irradiance is by four components with the constant held at `1`.
+    Polynom3 { coefficients: [f32; 3] },
+}
+
+/// Defines a gain map metadata to apply.
+///
+/// A gain map is a pixel-weighted rescaling factor encoded in logarithmic scale. Applying such a
+/// map in the forward direction entails using the SDR pixel data, applying a bias, multiplying,
+/// and applying a new bias. The gain factor may be sampled by some interpolation method in the
+/// logarithmic space of the gain map. Each _color_ channel may be scaled individually.
+///
+/// For a specification: <https://helpx.adobe.com/camera-raw/using/gain-map.html>
+///
+/// ```text
+/// # defined by the integer-encoded matrix:
+/// G(x) = x / (2**N – 1)
+/// # load by our interpolation method:
+/// y = sample(img_coord, gain_map)
+/// # apply some transform from the metadata
+/// z = affine_gain_transform(y, metadata)
+/// # determine an output-specified weight based on the intent of the metadata
+/// w = intent(output, metadata)
+/// # transform the sdr into hdr
+/// 𝐻𝐷𝑅 = (𝑆𝐷𝑅 + 𝑘𝑠𝑑𝑟) ⋅ 2**𝐺(y*w) − 𝑘ℎ𝑑𝑟
+/// ```
+///
+/// Note that some producers may fix the bias values `ksdr` and `khdr` to small values below the
+/// quantization range of the image during the encoding. This avoids mathematical poles in
+/// determining the gain which calculates `log2(sdr - khdr)` and `log2(hdr - khdr)`.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct GainMap {
+    /// The sdr bias as defined in metadata or broadcast across channels.
+    bias_sdr: [f32; 3],
+    /// The hdr bias as defined in metadata or broadcast across channels.
+    bias_hdr: [f32; 3],
+    /// The HDR range as intended by the metadata.
+    intent_hdr_range: core::ops::Range<f32>,
+    /// The HDR capacity of our target output image, that is log2 ration of its HDR to SDR gain.
+    display_hdr_capacity: core::ops::Range<f32>,
+    /// The gain logarithmic affine parameters, lower bound.
+    gain_min: f32,
+    /// The gain logarithmic affine parameters, upper bound.
+    gain_max: f32,
+    /// The gain logarithmic affine parameters, exponent scaling.
+    gain_gamma: f32,
 }
 
 /// A palette lookup operation.
@@ -2431,6 +2498,9 @@ impl CommandBuffer {
                                 },
                             });
                         }
+                        UnaryOp::Vignette(vignette) => {
+                            todo!()
+                        }
                         UnaryOp::ColorConvert(color) => {
                             // The inherent OptoToLinear transformation gets us to a linear light
                             // representation. We want to convert this into a compatible (that is,
@@ -2629,6 +2699,9 @@ impl CommandBuffer {
                                     },
                                 },
                             });
+                        }
+                        BinaryOp::GainMap(_) => {
+                            todo!()
                         }
                     }
 

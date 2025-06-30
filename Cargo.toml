@@ -1,109 +1,25 @@
-[package]
-name = "zosimos"
-version = "0.1.0"
-authors = ["Andreas Molzer <andreas.molzer@gmx.de>"]
-edition = "2018"
-license = "MPL-2.0"
-resolver = "2"
-
-[dependencies]
-bytemuck = "1.4"
-waker-fn = "1.1"
-
-[dependencies.image]
-version = "0.25.0"
-default-features = false
-
-[dependencies.image-canvas]
-workspace = true
-
-[dependencies.log]
-version = "0.4"
-
-[dependencies.palette]
-version = "0.7"
-default-features = false
-features = ["libm"]
-
-[dependencies.slotmap]
-version = "1"
-default-features = false
-
-[dependencies.wgpu]
-version = "22.0"
-features = ["spirv"]
-
-[build-dependencies]
-shaderc = "0.8"
-
-## Local, Testing dependencies.
-
-[dev-dependencies]
-crc32fast = "1.2"
-# Until next image version breaks this..
-blockhash = "1"
-env_logger = "0.11"
-
-[dev-dependencies.image]
-version = "0.25.0"
-default-features = false
-features = ["png"]
-
-[dev-dependencies.tokio]
-version = "1"
-features = ["macros", "rt-multi-thread"]
-
-[[test]]
-name = "buffer"
-
-[[test]]
-name = "blend"
-
-[[test]]
-name = "direct"
-
-[profile.release]
-debug = true
-opt-level = 2
-
-[profile.release-with-assertions]
-inherits = "release"
-debug-assertions = true
-
-[profile.test]
-debug = 0
-opt-level = 2
-
-## From here on is our local development profile.
-## We use it for CI and testing, not release.
-## Important parts are compiling image deps with release.
-
-[profile.dev.package."*"]
-debug = 0
-overflow-checks = false
-
-[profile.test.package]
-adler2.opt-level = 3
-crc32fast.opt-level = 3
-miniz_oxide.opt-level = 3
-png.opt-level = 3
-flate2.opt-level = 3
-
-[profile.dev.package]
-adler2.opt-level = 3
-crc32fast.opt-level = 3
-miniz_oxide.opt-level = 3
-png.opt-level = 3
-flate2.opt-level = 3
-
 [workspace]
-members = [".", "bin/editor", "bin/sh", "lib/lang"]
+members = ["bin/dioxus-editor", "bin/editor", "bin/sh", "lib/lang", "lib/zosimos"]
+resolver = "3"
 
 [workspace.dependencies.image-canvas]
-version = "0.4.2"
-git = "https://github.com/image-rs/canvas"
-rev = "cd28c93a73ca71a70f2a3919cb8faef369272259"
+version = "0.5.1"
+[workspace.dependencies.wgpu]
+version = "25.0"
+
 [workspace.dependencies.zosimos]
-path = "."
+path = "lib/zosimos"
 [workspace.dependencies.zosimos-lang]
 path = "lib/lang"
+
+[profile]
+
+[profile.wasm-dev]
+inherits = "dev"
+opt-level = 1
+
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"
