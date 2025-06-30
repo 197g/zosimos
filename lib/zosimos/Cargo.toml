@@ -30,6 +30,7 @@ default-features = false
 
 [dependencies.wgpu]
 workspace = true
+default-featurs = false
 features = ["spirv"]
 
 [build-dependencies]

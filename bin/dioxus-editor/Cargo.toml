@@ -1,16 +1,22 @@
 [package]
 name = "zosimos-dioxus-editor"
 version = "0.0.0"
+
 edition = "2024"
+# Well this would be nice: See cargo feature #9096
+# default-target = "wasm32-unknown-unknown"
 
 [dependencies]
+dioxus = { version = "0.6.3", features = ["web"] }
+dioxus-web = { version = "0.6.3" }
+image.workspace = true
 serde = { version = "1.0.197", features = ["derive"] }
-dioxus = { version = "0.6.3", features = ["fullstack"] }
-
-# Debug
-dioxus-logger = "0.6.2"
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-web.workspace = true
+web-sys.workspace = true
+wgpu = { workspace = true, default-featurs = false, features = ["webgl"] }
+zosimos.workspace = true
 
 [features]
 default = []
-server = ["dioxus/server"]
-web = ["dioxus/web"]
