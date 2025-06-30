@@ -5879,6 +5879,7 @@ dependencies = [
  "dioxus",
  "dioxus-logger",
  "serde",
+ "wgpu",
 ]
 
 [[package]]

@@ -9,6 +9,7 @@ dioxus = { version = "0.6.3", features = ["fullstack"] }
 
 # Debug
 dioxus-logger = "0.6.2"
+wgpu = { workspace = true }
 
 [features]
 default = []
