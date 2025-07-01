@@ -262,6 +262,7 @@ impl Surface {
         self.window.surface.get_current_texture()
     }
 
+    // FIXME: should be async in the run portion.
     pub fn present_to_texture(&mut self, surface_tex: &mut wgpu::SurfaceTexture) {
         let gpu = match self.entry.gpu {
             Some(key) => key,
@@ -281,19 +282,22 @@ impl Surface {
 
         let present = self.entry.presentable;
 
-        #[cfg(not(target_arch = "wasm32"))]
-        let start = std::time::Instant::now();
-
         let present_desc = self.pool.entry(present).unwrap().descriptor();
         let surface_desc = self.pool.entry(surface).unwrap().descriptor();
 
         let device = self.pool.iter_devices().next().unwrap();
         let capabilities = Capabilities::from(device);
 
-        let normalize = self
+        let normalize = match self
             .runtimes
             .get_or_insert_normalizing_exe(present_desc, surface_desc, capabilities)
-            .expect("Should be able to build resize");
+        {
+            Ok(normalize) => normalize,
+            Err(e) => {
+                tracing::warn!("Failed to generate program to paint with {e:?}");
+                return;
+            }
+        };
 
         let in_reg = normalize.in_reg;
         let out_reg = normalize.out_reg;
@@ -311,9 +315,11 @@ impl Surface {
         // Bind the input.
         run.bind(in_reg, present)
             .expect("Valid binding for our executable input");
+
         // Bind the output.
         run.bind_render(out_reg, surface)
             .expect("Valid binding for our executable output");
+
         tracing::warn!("Sub- optimality: {:?}", surface_tex.suboptimal);
         let recovered = run.recover_buffers();
         tracing::warn!("{:?}", recovered);

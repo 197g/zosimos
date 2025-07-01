@@ -1,0 +1,11 @@
+[target.x86_64-unknown-linux-gnu]
+linker = "/usr/bin/clang"
+rustflags = ["-C", "link-arg=--ld-path=/usr/bin/mold"]
+
+[build]
+# We really prefer this only as a target for the editor crate. However, in
+# general all editor support such as rust-analyzer will work with the workspace
+# configuration and the package-specific default target is unstable. We need
+# this target configuration since in `wgpu` all interaction with `web-sys`'s
+# canvas elements is gated on it.
+target = "wasm32-wasip1"

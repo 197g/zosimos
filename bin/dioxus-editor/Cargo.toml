@@ -7,13 +7,24 @@ edition = "2024"
 # default-target = "wasm32-unknown-unknown"
 
 [dependencies]
+# Note how some dependencies are `=` versions. We are a binary and choose at
+# least within the workspace to use a dependency set we can vet. For versions
+# with a specific marker I've at least had a glance at the code and made sense
+# of the dependency tree.
+console_error_panic_hook = "=0.1.7"
 dioxus = { version = "0.6.3", features = ["web"] }
 dioxus-web = { version = "0.6.3" }
+# tokio std-timers obviously do not work so we make a web-sys based drop-in
+gloo-timers = "0.3"
 image.workspace = true
+# fetching proxied resources and images into the workspace
+reqwest = { version = "0.12", default-features = false, features = ["default-tls", "http2"] }
 serde = { version = "1.0.197", features = ["derive"] }
+tokio = { version = "1", default-features = false, features = ["sync"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tracing-web.workspace = true
+url = "2.5"
 web-sys.workspace = true
 wgpu = { workspace = true, default-featurs = false, features = ["webgl"] }
 zosimos.workspace = true
