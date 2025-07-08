@@ -3,7 +3,6 @@ mod compute;
 mod surface;
 
 use dioxus::prelude::*;
-use tokio::sync;
 use web_sys::wasm_bindgen::JsCast as _;
 
 fn main() {
@@ -43,62 +42,71 @@ fn App() -> Element {
 
         // FIXME: errors here should fail the boot mechanism, not panic.
         let element = web_sys::window()
-            .or_else(|| {
-                tracing::error!("No window");
-                None
-            })
-            .unwrap()
+            .expect("Loaded in a JS window")
             .document()
-            .or_else(|| {
-                tracing::error!("No document");
-                None
-            })
-            .unwrap()
+            .expect("Loaded in a document page environment")
             .get_element_by_id("main-canvas")
             .or_else(|| {
-                tracing::error!("No such element");
+                tracing::error!("Did not find the element, searched for `#main-canvas`");
                 None
             })
             .unwrap();
 
-        let canvas = element
-            .dyn_into()
-            .map_err(|e| {
-                tracing::error!("Not a canvas {e:?}");
-                e
-            })
-            .unwrap();
+        let canvas = element.dyn_into().unwrap();
 
         tracing::info!("Surface booting");
 
-        let surface = surface::Surface::new(canvas)
-            .map_err(|e| {
-                tracing::info!("Can not create surface {e:?}");
-                e
-            })
-            .unwrap();
+        let surface = surface::Surface::new(canvas).unwrap();
 
         tracing::info!("Surface booted");
         surface
     }
 
-    use_effect(|| {
+    let render_count = use_signal(|| 0);
+
+    let write_render = render_count.clone();
+    use_effect(move || {
+        let mut write_render = write_render;
         let mut surface = surface_from_document();
         let compute = compute::Compute::new(&mut surface);
-        spawn(run_surface(surface, compute));
+
+        // Feedback so we can debug what happened in rendering.
+        let on_render = Box::new(move || write_render += 1);
+        spawn(run_surface(surface, compute, on_render));
     });
 
+    const STYLE: Asset = asset!("/assets/main.css");
+
     rsx! {
-        link { rel: "stylesheet", href: "main.css" }
+        document::Stylesheet { href: STYLE }
         div {
-            canvas { id: "main-canvas", width: "800", height: "600" },
+            canvas {
+                id: "main-canvas",
+                onresize: move |cx| {
+                    tracing::error!("Resized {cx:?}");
+                    if let Ok(cbox) = cx.data().get_content_box_size() {
+                        let height = cbox.to_u32().height;
+                        let width = cbox.to_u32().width;
+
+                        document::eval(&format!(r#"
+                            let el = document.getElementById("main-canvas");
+                            el.width = {width};
+                            el.height = {height};
+                        "#));
+                    }
+                }
+            }
         }
     }
 }
 
-async fn run_surface(mut surface: surface::Surface, mut compute: compute::Compute) {
+async fn run_surface(
+    mut surface: surface::Surface,
+    mut compute: compute::Compute,
+    mut on_render_cb: Box<impl FnMut()>,
+) {
     let mut chain = surface.configure_swap_chain(1 << 2);
-    tracing::info!("Running surface");
+    tracing::trace!("Running surface");
     const BACKGROUND: Asset = asset!("/assets/background.png");
 
     let img_if = async move {
@@ -132,7 +140,7 @@ async fn run_surface(mut surface: surface::Surface, mut compute: compute::Comput
         /* Running means: we make a certain frame target on the canvas itself. We also run the actual
          * compute program at its own pace.
          */
-        tracing::info!("Tick {frame_idx}");
+        tracing::trace!("Tick {frame_idx}");
         notify.notified().await;
 
         let mut texture = match surface.get_current_texture() {
@@ -143,11 +151,12 @@ async fn run_surface(mut surface: surface::Surface, mut compute: compute::Comput
             Ok(tx) => tx,
         };
 
-        tracing::info!("Rendering presentation frame");
+        tracing::trace!("Rendering presentation frame");
         surface.present_to_texture(&mut texture);
 
-        tracing::info!("Presenting frame");
+        tracing::trace!("Presenting frame");
         texture.present();
+        on_render_cb();
     }
 }
 
