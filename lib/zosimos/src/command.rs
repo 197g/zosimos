@@ -10,11 +10,14 @@ use crate::program::{
     High, ImageBufferAssignment, ImageBufferPlan, ImageDescriptor, Initializer, Knob, KnobUser,
     ParameterizedFragment, Program, QuadTarget, RegisterAssignment, Target, Texture,
 };
-pub use crate::shaders::bilinear::Shader as Bilinear;
+
+pub use crate::shaders::bilinear::ShaderData as Bilinear;
 pub use crate::shaders::distribution_normal2d::Shader as DistributionNormal2d;
 pub use crate::shaders::fractal_noise::Shader as FractalNoise;
 
-use crate::shaders::{self, FragmentShaderInvocation, PaintOnTopKind, ShaderInvocation};
+use crate::shaders::{
+    self, FragmentShaderInvocation, PaintOnTopKind, ShaderInvocation, ShadersCore, ShadersStd,
+};
 
 use image_canvas::color::{Color, ColorChannel, Whitepoint};
 use image_canvas::layout::{SampleParts, Texel};
@@ -27,6 +30,14 @@ use std::sync::Arc;
 /// A reference to one particular value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Register(pub(crate) usize);
+
+/// The standard library, and others in time..
+///
+/// Also holds the physical resources, the concrete shader resources.
+pub struct Linker {
+    pub core: ShadersCore,
+    pub std: ShadersStd,
+}
 
 /// One linear sequence of instructions.
 ///
@@ -285,7 +296,7 @@ pub(crate) enum BinaryOp {
     },
     /// Sample from a palette based on the color value of another image.
     /// Op[T, U] = T
-    Palette(shaders::PaletteShader),
+    Palette(shaders::palette::ShaderData),
     /// Apply gain map.
     ///
     /// Op[T, U] = T
@@ -702,6 +713,16 @@ enum CommandErrorKind {
     GenericTypeError,
     Other,
     Unimplemented,
+}
+
+impl Linker {
+    fn from_included() -> &'static Self {
+        static INSTANCE: std::sync::OnceLock<Linker> = std::sync::OnceLock::new();
+        INSTANCE.get_or_init(|| Linker {
+            core: crate::shaders::included_shaders_core(),
+            std: crate::shaders::included_shaders_std(),
+        })
+    }
 }
 
 /// Intrinsically defined methods of manipulating images.
@@ -1460,7 +1481,7 @@ impl CommandBuffer {
         let op = Op::Binary {
             lhs: palette,
             rhs: indices,
-            op: BinaryOp::Palette(shaders::PaletteShader {
+            op: BinaryOp::Palette(shaders::palette::ShaderData {
                 x_coord,
                 y_coord,
                 base_x: config.width_base,
@@ -1667,7 +1688,7 @@ impl CommandBuffer {
 
         let grid = self.bilinear(
             grid_layout,
-            Bilinear {
+            shaders::bilinear::ShaderData {
                 u_min: [0.0, 0.0, 0.0, 1.0],
                 v_min: [0.0, 0.0, 0.0, 1.0],
                 uv_min: [0.0, 0.0, 0.0, 1.0],
@@ -2048,9 +2069,9 @@ impl WithBuffer<'_> {
 }
 
 /// Turn a command buffer into a `Program`.
-impl CommandBuffer {
-    pub fn compile(&self) -> Result<Program, CompileError> {
-        self.link(&[], &[], &[])
+impl Linker {
+    pub fn compile(&self, program: &CommandBuffer) -> Result<Program, CompileError> {
+        self.link(program, &[], &[], &[])
     }
 
     /// An unergonomic interface for linking a collection of different command buffers to a
@@ -2065,6 +2086,7 @@ impl CommandBuffer {
     /// `compile` helper that does not require any linkage.
     pub fn link(
         &self,
+        main: &CommandBuffer,
         tys: &[Descriptor],
         functions: &[CommandBuffer],
         links: &[&[usize]],
@@ -2081,7 +2103,7 @@ impl CommandBuffer {
         let mut monomorphic = Monomorphizing {
             stack: vec![],
             monomorphic: HashMap::new(),
-            commands: Some(self).into_iter().chain(functions).collect(),
+            commands: Some(main).into_iter().chain(functions).collect(),
             knobs: HashMap::new(),
             next_knob: Knob(0),
             current_link_id: 0,
@@ -2138,7 +2160,16 @@ impl CommandBuffer {
             monomorphic.current_link_id = link_idx;
             let links = links.get(link_idx).copied().unwrap_or_default();
 
-            let linked = Self::link_in(command, tys, &mut high_ops, &mut monomorphic, links)?;
+            let linked = Self::link_in(
+                &self.core,
+                &self.std,
+                command,
+                tys,
+                &mut high_ops,
+                &mut monomorphic,
+                links,
+            )?;
+
             // FIXME: expand further requested generic instantiations.
             functions.push(linked);
         }
@@ -2150,11 +2181,17 @@ impl CommandBuffer {
             buffer_by_op: HashMap::default(),
             texture_by_op: HashMap::default(),
             knobs: monomorphic.knobs,
+            library: crate::program::Library {
+                std: self.std.clone(),
+                core: self.core.clone(),
+            },
         })
     }
 
     fn link_in(
-        command: &Self,
+        core: &ShadersCore,
+        std: &ShadersStd,
+        command: &CommandBuffer,
         tys: Cow<'_, [Descriptor]>,
         high_ops: &mut Vec<High>,
         mono: &mut Monomorphizing,
@@ -2395,12 +2432,15 @@ impl CommandBuffer {
                                 },
                             })
                         }
-                        ConstructOp::Bilinear(bilinear) => high_ops.push(High::DrawInto {
+                        &ConstructOp::Bilinear(bilinear) => high_ops.push(High::DrawInto {
                             dst: Target::Discard(texture),
                             fn_: Initializer::PaintFullScreen {
                                 shader: ParameterizedFragment {
                                     invocation: FragmentShaderInvocation::Bilinear(
-                                        bilinear.clone(),
+                                        shaders::bilinear::Shader {
+                                            data: bilinear,
+                                            spirv: std.bilinear.clone(),
+                                        },
                                     ),
                                     knob,
                                 },
@@ -2410,7 +2450,12 @@ impl CommandBuffer {
                             dst: Target::Discard(texture),
                             fn_: Initializer::PaintFullScreen {
                                 shader: ParameterizedFragment {
-                                    invocation: FragmentShaderInvocation::SolidRgb(color.into()),
+                                    invocation: FragmentShaderInvocation::SolidRgb(
+                                        shaders::solid_rgb::Shader {
+                                            data: color.into(),
+                                            spirv: std.solid_rgb.clone(),
+                                        },
+                                    ),
                                     knob,
                                 },
                             },
@@ -2470,7 +2515,7 @@ impl CommandBuffer {
                                     viewport: target,
                                     shader: ParameterizedFragment {
                                         invocation: FragmentShaderInvocation::PaintOnTop(
-                                            PaintOnTopKind::Copy,
+                                            core.paint_copy(),
                                         ),
                                         knob,
                                     },
@@ -2491,6 +2536,7 @@ impl CommandBuffer {
                                         invocation: FragmentShaderInvocation::LinearColorMatrix(
                                             shaders::LinearColorTransform {
                                                 matrix: matrix.into(),
+                                                spirv: std.linear_color_transform.clone(),
                                             },
                                         ),
                                         knob,
@@ -2521,7 +2567,7 @@ impl CommandBuffer {
                                 dst: Target::Discard(texture),
                                 fn_: Initializer::PaintFullScreen {
                                     shader: ParameterizedFragment {
-                                        invocation: color.to_shader(),
+                                        invocation: color.to_shader(std),
                                         knob,
                                     },
                                 },
@@ -2540,7 +2586,7 @@ impl CommandBuffer {
                                     // the same amount of shader code but a precise result.
                                     shader: ParameterizedFragment {
                                         invocation: FragmentShaderInvocation::PaintOnTop(
-                                            PaintOnTopKind::Copy,
+                                            core.paint_copy(),
                                         ),
                                         knob,
                                     },
@@ -2548,7 +2594,8 @@ impl CommandBuffer {
                             })
                         }
                         UnaryOp::Derivative(derivative) => {
-                            let invocation = derivative.method.to_shader(derivative.direction)?;
+                            let invocation =
+                                derivative.method.to_shader(derivative.direction, std)?;
 
                             high_ops.push(High::PushOperand(reg_to_texture[src]));
                             high_ops.push(High::DrawInto {
@@ -2603,7 +2650,7 @@ impl CommandBuffer {
                                     viewport: lower_region,
                                     shader: ParameterizedFragment {
                                         invocation: FragmentShaderInvocation::PaintOnTop(
-                                            PaintOnTopKind::Copy,
+                                            core.paint_copy(),
                                         ),
                                         knob: knob.clone(),
                                     },
@@ -2620,7 +2667,7 @@ impl CommandBuffer {
                                     viewport: lower_region,
                                     shader: ParameterizedFragment {
                                         invocation: FragmentShaderInvocation::PaintOnTop(
-                                            affine.sampling.as_paint_on_top()?,
+                                            affine.sampling.as_paint_on_top(core)?,
                                         ),
                                         knob,
                                     },
@@ -2640,8 +2687,13 @@ impl CommandBuffer {
                                     shader: ParameterizedFragment {
                                         invocation: FragmentShaderInvocation::Inject(
                                             shaders::inject::Shader {
-                                                mix: channel.into_vec4(),
-                                                color: from_channels.channel_weight_vec4().unwrap(),
+                                                data: shaders::inject::ShaderData {
+                                                    mix: channel.into_vec4(),
+                                                    color: from_channels
+                                                        .channel_weight_vec4()
+                                                        .unwrap(),
+                                                },
+                                                spirv: std.inject.clone(),
                                             },
                                         ),
                                         knob,
@@ -2660,7 +2712,7 @@ impl CommandBuffer {
                                     viewport: lower_region,
                                     shader: ParameterizedFragment {
                                         invocation: FragmentShaderInvocation::PaintOnTop(
-                                            PaintOnTopKind::Copy,
+                                            core.paint_copy(),
                                         ),
                                         knob: knob.clone(),
                                     },
@@ -2677,7 +2729,7 @@ impl CommandBuffer {
                                     viewport: lower_region,
                                     shader: ParameterizedFragment {
                                         invocation: FragmentShaderInvocation::PaintOnTop(
-                                            PaintOnTopKind::Copy,
+                                            core.paint_copy(),
                                         ),
                                         knob,
                                     },
@@ -2693,7 +2745,10 @@ impl CommandBuffer {
                                 fn_: Initializer::PaintFullScreen {
                                     shader: ParameterizedFragment {
                                         invocation: FragmentShaderInvocation::Palette(
-                                            shader.clone(),
+                                            shaders::palette::Shader {
+                                                data: shader.clone(),
+                                                spirv: std.palette.clone(),
+                                            },
                                         ),
                                         knob,
                                     },
@@ -2834,7 +2889,18 @@ impl CommandBuffer {
             signature_registers,
         })
     }
+}
 
+/// Impls on `CommandBuffer` that allow defining custom SPIR-V extensions.
+///
+/// Generally, the steps on the dynamic shader are:
+///
+/// 1. Check the kind, get SPIR-v code.
+/// 2. Determine the dynamic typing of the result.
+/// 3. Have the shader create binary representation of its data.
+/// 3. Create a new entry on the command buffer.
+/// 4. Not yet performed: (Validate the SPIR-V module inputs against the data definition)
+impl CommandBuffer {
     /// Get the descriptor for a register.
     fn describe_reg(&self, Register(reg): Register) -> RegisterDescription<'_> {
         match self.ops.get(reg) {
@@ -2860,18 +2926,7 @@ impl CommandBuffer {
         self.ops.push(op);
         reg
     }
-}
 
-/// Impls on `CommandBuffer` that allow defining custom SPIR-V extensions.
-///
-/// Generally, the steps on the dynamic shader are:
-///
-/// 1. Check the kind, get SPIR-v code.
-/// 2. Determine the dynamic typing of the result.
-/// 3. Have the shader create binary representation of its data.
-/// 3. Create a new entry on the command buffer.
-/// 4. Not yet performed: (Validate the SPIR-V module inputs against the data definition)
-impl CommandBuffer {
     /// Record a _constructor_, with a user-supplied shader.
     pub fn construct_dynamic(&mut self, dynamic: &dyn ShaderCommand) -> Register {
         let mut data = vec![];
@@ -3161,7 +3216,7 @@ impl TyVarBounds {
 }
 
 impl ColorConversion {
-    pub(crate) fn to_shader(&self) -> FragmentShaderInvocation {
+    pub(crate) fn to_shader(&self, std: &ShadersStd) -> FragmentShaderInvocation {
         match self {
             ColorConversion::Xyz {
                 to_xyz_matrix,
@@ -3172,33 +3227,48 @@ impl ColorConversion {
 
                 FragmentShaderInvocation::LinearColorMatrix(shaders::LinearColorTransform {
                     matrix,
+                    spirv: std.linear_color_transform.clone(),
                 })
             }
             ColorConversion::XyzToOklab { to_xyz_matrix } => {
-                FragmentShaderInvocation::Oklab(shaders::oklab::Shader::with_encode(*to_xyz_matrix))
+                FragmentShaderInvocation::Oklab(shaders::oklab::Shader {
+                    xyz_transform: *to_xyz_matrix,
+                    direction: shaders::oklab::Coding::Encode {
+                        spirv: std.oklab_encode.clone(),
+                    },
+                })
             }
             ColorConversion::OklabToXyz { from_xyz_matrix } => {
                 let from_xyz_matrix = from_xyz_matrix.inv();
-                FragmentShaderInvocation::Oklab(shaders::oklab::Shader::with_decode(
-                    from_xyz_matrix,
-                ))
+                FragmentShaderInvocation::Oklab(shaders::oklab::Shader {
+                    xyz_transform: from_xyz_matrix,
+                    direction: shaders::oklab::Coding::Decode {
+                        spirv: std.oklab_encode.clone(),
+                    },
+                })
             }
             ColorConversion::XyzToSrLab2 {
                 to_xyz_matrix,
                 whitepoint,
-            } => FragmentShaderInvocation::SrLab2(shaders::srlab2::Shader::with_encode(
-                *to_xyz_matrix,
-                *whitepoint,
-            )),
+            } => FragmentShaderInvocation::SrLab2(shaders::srlab2::Shader {
+                matrix: *to_xyz_matrix,
+                whitepoint: *whitepoint,
+                direction: shaders::srlab2::Coding::Encode {
+                    spirv: std.srlab2_encode.clone(),
+                },
+            }),
             ColorConversion::SrLab2ToXyz {
                 from_xyz_matrix,
                 whitepoint,
             } => {
                 let from_xyz_matrix = from_xyz_matrix.inv();
-                FragmentShaderInvocation::SrLab2(shaders::srlab2::Shader::with_decode(
-                    from_xyz_matrix,
-                    *whitepoint,
-                ))
+                FragmentShaderInvocation::SrLab2(shaders::srlab2::Shader {
+                    matrix: from_xyz_matrix,
+                    whitepoint: *whitepoint,
+                    direction: shaders::srlab2::Coding::Decode {
+                        spirv: std.srlab2_decode.clone(),
+                    },
+                })
             }
         }
     }
@@ -3269,9 +3339,17 @@ impl ChromaticAdaptation {
 
 #[rustfmt::skip]
 impl DerivativeMethod {
-    fn to_shader(&self, direction: Direction) -> Result<FragmentShaderInvocation, CompileError> {
+    fn to_shader(&self, direction: Direction, std: &ShadersStd) -> Result<FragmentShaderInvocation, CompileError> {
         use DerivativeMethod::*;
         use shaders::box3;
+
+        let from_kernel_3x3 = |matrix| {
+            box3::Shader {
+                matrix,
+                spirv: std.box3.clone(),
+            }
+        };
+
         match self {
             Prewitt => {
                 let matrix = RowMatrix::with_outer_product(
@@ -3279,7 +3357,7 @@ impl DerivativeMethod {
                     [0.5, 0.0, -0.5],
                 );
 
-                let shader = box3::Shader::new(direction.adjust_vertical_box(matrix));
+                let shader = from_kernel_3x3(direction.adjust_vertical_box(matrix));
                 Ok(shaders::FragmentShaderInvocation::Box3(shader))
             }
             Sobel => {
@@ -3288,7 +3366,7 @@ impl DerivativeMethod {
                     [0.5, 0.0, -0.5],
                 );
 
-                let shader = box3::Shader::new(direction.adjust_vertical_box(matrix));
+                let shader = from_kernel_3x3(direction.adjust_vertical_box(matrix));
                 Ok(shaders::FragmentShaderInvocation::Box3(shader))
             }
             Scharr3 => {
@@ -3297,7 +3375,7 @@ impl DerivativeMethod {
                     [0.5, 0.0, -0.5],
                 );
 
-                let shader = box3::Shader::new(direction.adjust_vertical_box(matrix));
+                let shader = from_kernel_3x3(direction.adjust_vertical_box(matrix));
                 Ok(shaders::FragmentShaderInvocation::Box3(shader))
             }
             Scharr3To4Bit => {
@@ -3306,7 +3384,7 @@ impl DerivativeMethod {
                     [0.5, 0.0, -0.5],
                 );
 
-                let shader = box3::Shader::new(direction.adjust_vertical_box(matrix));
+                let shader = from_kernel_3x3(direction.adjust_vertical_box(matrix));
                 Ok(shaders::FragmentShaderInvocation::Box3(shader))
             }
             Scharr3To8Bit => {
@@ -3315,7 +3393,7 @@ impl DerivativeMethod {
                     [0.5, 0.0, -0.5],
                 );
 
-                let shader = box3::Shader::new(direction.adjust_vertical_box(matrix));
+                let shader = from_kernel_3x3(direction.adjust_vertical_box(matrix));
                 Ok(shaders::FragmentShaderInvocation::Box3(shader))
             }
             // FIXME: implement these.
@@ -3405,9 +3483,9 @@ impl Affine {
 }
 
 impl AffineSample {
-    fn as_paint_on_top(self) -> Result<PaintOnTopKind, CompileError> {
+    fn as_paint_on_top(self, core: &ShadersCore) -> Result<PaintOnTopKind, CompileError> {
         match self {
-            AffineSample::Nearest => Ok(PaintOnTopKind::Copy),
+            AffineSample::Nearest => Ok(core.paint_copy()),
             _ => Err(CompileError::NotYetImplemented),
         }
     }
@@ -3609,6 +3687,10 @@ fn simple_program() {
         .expect("Valid to inscribe");
     let (_, outformat) = commands.output(result).expect("Valid for output");
 
-    let _ = commands.compile().expect("Could build command buffer");
+    let linker = Linker::from_included();
+
+    let _ = linker
+        .compile(&commands)
+        .expect("Could build command buffer");
     assert_eq!(outformat.as_concrete().map(|x| x.layout), Some(expected));
 }

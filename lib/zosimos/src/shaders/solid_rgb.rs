@@ -1,22 +1,26 @@
 use crate::program::BufferInitContent;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Shader([f32; 4]);
+pub struct ShaderData([f32; 4]);
 
-pub const SHADER_SOURCE: &[u8] =
-    include_bytes!(concat!(env!("OUT_DIR"), "/spirv/solid_rgb.frag.v"));
+#[derive(Debug, Clone, PartialEq)]
+pub struct Shader {
+    pub data: ShaderData,
+    pub spirv: Arc<[u8]>,
+}
 
 impl super::FragmentShaderData for Shader {
     fn key(&self) -> Option<super::FragmentShaderKey> {
         None
     }
 
-    fn spirv_source(&self) -> std::borrow::Cow<'static, [u8]> {
-        std::borrow::Cow::Borrowed(SHADER_SOURCE)
+    fn spirv_source(&self) -> Arc<[u8]> {
+        self.spirv.clone()
     }
 
     fn binary_data(&self, buffer: &mut Vec<u8>) -> Option<BufferInitContent> {
-        Some(BufferInitContent::new(buffer, &self.0))
+        Some(BufferInitContent::new(buffer, &self.data.0))
     }
 
     fn num_args(&self) -> u32 {
@@ -24,8 +28,8 @@ impl super::FragmentShaderData for Shader {
     }
 }
 
-impl From<[f32; 4]> for Shader {
+impl From<[f32; 4]> for ShaderData {
     fn from(value: [f32; 4]) -> Self {
-        Shader(value)
+        ShaderData(value)
     }
 }

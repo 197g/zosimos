@@ -11,7 +11,7 @@ use crate::program::{
     BufferDescriptorInit, BufferInitContent, BufferLayout, BufferUsage, ByteBufferAssignment,
     Capabilities, ColorAttachmentDescriptor, DeviceBuffer, DeviceTexture, Event, FragmentState,
     ImageBufferAssignment, ImageBufferPlan, ImageDescriptor, ImagePoolPlan, Initializer,
-    Instruction, Knob, KnobDescriptor, LaunchError, Low, PipelineLayoutDescriptor,
+    Instruction, Knob, KnobDescriptor, LaunchError, Library, Low, PipelineLayoutDescriptor,
     PipelineLayoutKey, PrimitiveState, RegisterAssignment, RenderPassDescriptor,
     RenderPipelineDescriptor, RenderPipelineKey, SamplerDescriptor, ShaderDescriptor,
     ShaderDescriptorKey, Texture, TextureDescriptor, TextureViewDescriptor, VertexState,
@@ -25,7 +25,6 @@ use wgpu::StoreOp;
 use super::KnobUser;
 
 /// The encoder tracks the supposed state of `run::Descriptors` without actually executing them.
-#[derive(Default)]
 pub(crate) struct Encoder<Instructions: ExtendOne<Low> = Vec<Low>> {
     pub(crate) instructions: Instructions,
     /// The allocate binary data for runtime execution.
@@ -102,9 +101,11 @@ pub(crate) struct Encoder<Instructions: ExtendOne<Low> = Vec<Low>> {
     buffer_map: HashMap<Buffer, BufferMap>,
     /// Describes which intermediate textures have been mapped to the GPU.
     staging_map: HashMap<Texture, StagingTexture>,
+
     // Arena style allocators.
     // Output State with additional info relating to the input program.
     pub(crate) info: ExecutableInfo,
+    pub(crate) library: Library,
 }
 
 /// FIXME: remember masks for ops that can be skipped/replaced if texture is cached? Most ops
@@ -281,6 +282,55 @@ enum ShaderBind {
 }
 
 impl<I: ExtendOne<Low>> Encoder<I> {
+    pub fn new(library: Library) -> Self
+    where
+        I: Default,
+    {
+        Encoder {
+            instructions: I::default(),
+            library,
+            binary_data: Default::default(),
+            instruction_pointer: Default::default(),
+            bind_groups: Default::default(),
+            bind_group_layouts: Default::default(),
+            buffers: Default::default(),
+            command_buffers: Default::default(),
+            pipeline_layouts: Default::default(),
+            render_pipelines: Default::default(),
+            sampler: Default::default(),
+            shaders: Default::default(),
+            textures: Default::default(),
+            texture_views: Default::default(),
+            events: Default::default(),
+            is_in_command_encoder: Default::default(),
+            is_in_render_pass: Default::default(),
+            buffer_plan: Default::default(),
+            trace_pool_plan: Default::default(),
+            pool_plan: Default::default(),
+            input_map: Default::default(),
+            output_map: Default::default(),
+            render_map: Default::default(),
+            paint_group_layout: Default::default(),
+            quad_group_layout: Default::default(),
+            fragment_data_group_layout: Default::default(),
+            paint_pipeline_layout: Default::default(),
+            stage_group_layout: Default::default(),
+            known_samplers: Default::default(),
+            fragment_shaders: Default::default(),
+            vertex_shaders: Default::default(),
+            simple_quad_buffer: Default::default(),
+            staged_to_pipelines: Default::default(),
+            staged_from_pipelines: Default::default(),
+            operands: Default::default(),
+            delayed_commands: Default::default(),
+            register_map: Default::default(),
+            texture_map: Default::default(),
+            buffer_map: Default::default(),
+            staging_map: Default::default(),
+            info: Default::default(),
+        }
+    }
+
     /// Tell the encoder which commands are natively supported.
     /// Some features require GPU support. At this point we decide if our request has succeeded and
     /// we might poly-fill it with a compute shader or something similar.
@@ -1024,7 +1074,9 @@ impl<I: ExtendOne<Low>> Encoder<I> {
         self.operands.push(reg_texture);
         let pipeline = {
             let shader =
-                shaders::FragmentShaderInvocation::PaintOnTop(shaders::PaintOnTopKind::Copy);
+                shaders::FragmentShaderInvocation::PaintOnTop(shaders::PaintOnTopKind::Copy {
+                    spirv: self.library.core.frag_copy.clone(),
+                });
 
             let vertex = self.vertex_shader(
                 Some(shaders::VertexShader::Noop),
@@ -1035,7 +1087,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
             let key = shader.key();
             let spirv = shader.spirv_source();
 
-            let fragment = self.fragment_shader(key, shader_include_to_spirv_static(spirv))?;
+            let fragment = self.fragment_shader(key, shader_include_to_spirv(&*spirv))?;
             let fragment_bind_data = shader
                 .binary_data(&mut self.binary_data)
                 .map(|data| self.ingest_buffer_init(data))
@@ -1776,7 +1828,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
                 let key = shader.key();
                 let spirv = shader.spirv_source();
 
-                let fragment = self.fragment_shader(key, shader_include_to_spirv_static(spirv))?;
+                let fragment = self.fragment_shader(key, shader_include_to_spirv(&*spirv))?;
 
                 let buffer: [[f32; 2]; 8];
                 let min_u = (selection.x as f32) / (tex_width.get() as f32);
@@ -1823,7 +1875,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
                 let key = shader.key();
                 let spirv = shader.spirv_source();
 
-                let fragment = self.fragment_shader(key, shader_include_to_spirv_static(spirv))?;
+                let fragment = self.fragment_shader(key, shader_include_to_spirv(&*spirv))?;
                 let fragment_bind_data = shader.binary_data(&mut self.binary_data)
                     .map(|data| self.ingest_buffer_init(data))
                     .map(|data| BufferBind::Planned { data })
@@ -1849,9 +1901,11 @@ impl<I: ExtendOne<Low>> Encoder<I> {
                     Some(shaders::VertexShader::Noop),
                     shader_include_to_spirv(shaders::VERT_NOOP))?;
 
+                let shader = self.library.core.stage.decode_src(*stage_kind);
+
                 let fragment = self.fragment_shader(
                     Some(shaders::FragmentShaderKey::Convert(shaders::Direction::Decode, *stage_kind)),
-                    shader_include_to_spirv(stage_kind.decode_src()))?;
+                    shader_include_to_spirv(&*shader))?;
 
                 let buffer = parameter.serialize_std140();
                 // FIXME: see below, shaderc requires renamed entry points to "main".
@@ -1895,9 +1949,11 @@ impl<I: ExtendOne<Low>> Encoder<I> {
                     Some(shaders::VertexShader::Noop),
                     shader_include_to_spirv(shaders::VERT_NOOP))?;
 
+                let shader = self.library.core.stage.encode_src(*stage_kind);
+
                 let fragment = self.fragment_shader(
                     Some(shaders::FragmentShaderKey::Convert(shaders::Direction::Encode, *stage_kind)),
-                    shader_include_to_spirv(stage_kind.encode_src()))?;
+                    shader_include_to_spirv(&*shader))?;
 
                 let buffer = parameter.serialize_std140();
                 // FIXME: see below, shaderc requires renamed entry points to "main".
@@ -2161,16 +2217,6 @@ impl<I: ExtendOne<Low>> Encoder<I> {
 }
 
 impl RegisterMap {}
-
-fn shader_include_to_spirv_static(src: Cow<'static, [u8]>) -> Cow<'static, [u32]> {
-    if let Cow::Borrowed(src) = src {
-        if let Ok(cast) = bytemuck::try_cast_slice(src) {
-            return Cow::Borrowed(cast);
-        }
-    }
-
-    shader_include_to_spirv(&src)
-}
 
 fn shader_include_to_spirv(src: &[u8]) -> Cow<'static, [u32]> {
     assert!(src.len() % 4 == 0);

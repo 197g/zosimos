@@ -1,6 +1,5 @@
 use crate::color_matrix::RowMatrix;
 use crate::program::BufferInitContent;
-use std::borrow::Cow;
 use std::sync::Arc;
 
 pub mod bilinear;
@@ -14,6 +13,33 @@ pub mod solid_rgb;
 pub mod srlab2;
 pub mod stage;
 
+/// All the programs we need for the core language, i.e. everything that is not functions but just
+/// managing the buffers, moving between bytes and textures type system.
+#[derive(Clone)]
+pub struct ShadersCore {
+    pub vert_noop: Arc<[u8]>,
+    pub frag_copy: Arc<[u8]>,
+    pub frag_mix_rgba: Arc<[u8]>,
+    pub frag_linear: Arc<[u8]>,
+    pub stage: stage::Shaders,
+}
+
+#[derive(Clone)]
+pub struct ShadersStd {
+    pub bilinear: Arc<[u8]>,
+    pub box3: Arc<[u8]>,
+    pub distribution_normal2d: Arc<[u8]>,
+    pub fractal_noise: Arc<[u8]>,
+    pub inject: Arc<[u8]>,
+    pub linear_color_transform: Arc<[u8]>,
+    pub oklab_encode: Arc<[u8]>,
+    pub oklab_decode: Arc<[u8]>,
+    pub palette: Arc<[u8]>,
+    pub solid_rgb: Arc<[u8]>,
+    pub srlab2_encode: Arc<[u8]>,
+    pub srlab2_decode: Arc<[u8]>,
+}
+
 /// A vertex box shader, rendering a sole quad with given vertex and uv coordinate system.
 pub const VERT_NOOP: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/box.vert.v"));
 
@@ -23,6 +49,87 @@ pub const FRAG_COPY: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/cop
 pub const FRAG_MIX_RGBA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/inject.frag.v"));
 /// a linear transformation on rgb color.
 pub const FRAG_LINEAR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/linear.frag.v"));
+
+mod _shader {
+    pub const BILINEAR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/bilinear.frag.v"));
+
+    pub const BOX: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/box3.frag.v"));
+
+    pub const DISTRIBUTION_NORMAL_2D: &[u8] = include_bytes!(concat!(
+        env!("OUT_DIR"),
+        "/spirv/distribution_normal2d.frag.v"
+    ));
+
+    pub const FRACTAL_NOISE: &[u8] =
+        include_bytes!(concat!(env!("OUT_DIR"), "/spirv/fractal_noise.frag.v"));
+
+    pub const INJECT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/inject.frag.v"));
+
+    pub const OKLAB_ENCODE: &[u8] =
+        include_bytes!(concat!(env!("OUT_DIR"), "/spirv/oklab_encode.frag.v"));
+    pub const OKLAB_DECODE: &[u8] =
+        include_bytes!(concat!(env!("OUT_DIR"), "/spirv/oklab_decode.frag.v"));
+
+    pub const PALETTE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/palette.frag.v"));
+
+    pub const SOLID_RGBA: &[u8] =
+        include_bytes!(concat!(env!("OUT_DIR"), "/spirv/solid_rgb.frag.v"));
+
+    pub const SRLAB2_ENCODE: &[u8] =
+        include_bytes!(concat!(env!("OUT_DIR"), "/spirv/srlab2_encode.frag.v"));
+    pub const SRLAB2_DECODE: &[u8] =
+        include_bytes!(concat!(env!("OUT_DIR"), "/spirv/srlab2_decode.frag.v"));
+
+    pub fn stage() -> super::stage::Shaders {
+        super::stage::Shaders {
+            decode_r8ui_x4: std::sync::Arc::from(
+                &include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_d8ui.frag.v"))[..],
+            ),
+            decode_r16ui_x2: std::sync::Arc::from(
+                &include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_d16ui.frag.v"))[..],
+            ),
+            decode_r32ui: std::sync::Arc::from(
+                &include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_d32ui.frag.v"))[..],
+            ),
+            encode_r8ui_x4: std::sync::Arc::from(
+                &include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_e8ui.frag.v"))[..],
+            ),
+            encode_r16ui_x2: std::sync::Arc::from(
+                &include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_e16ui.frag.v"))[..],
+            ),
+            encode_r32ui: std::sync::Arc::from(
+                &include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_e32ui.frag.v"))[..],
+            ),
+        }
+    }
+}
+
+pub fn included_shaders_core() -> ShadersCore {
+    ShadersCore {
+        vert_noop: VERT_NOOP.into(),
+        frag_copy: FRAG_COPY.into(),
+        frag_mix_rgba: FRAG_MIX_RGBA.into(),
+        frag_linear: FRAG_LINEAR.into(),
+        stage: _shader::stage(),
+    }
+}
+
+pub fn included_shaders_std() -> ShadersStd {
+    ShadersStd {
+        bilinear: _shader::BILINEAR.into(),
+        box3: _shader::BOX.into(),
+        distribution_normal2d: _shader::DISTRIBUTION_NORMAL_2D.into(),
+        fractal_noise: _shader::FRACTAL_NOISE.into(),
+        inject: _shader::INJECT.into(),
+        linear_color_transform: FRAG_LINEAR.into(),
+        oklab_encode: _shader::OKLAB_ENCODE.into(),
+        oklab_decode: _shader::OKLAB_DECODE.into(),
+        palette: _shader::PALETTE.into(),
+        solid_rgb: _shader::SOLID_RGBA.into(),
+        srlab2_encode: _shader::SRLAB2_ENCODE.into(),
+        srlab2_decode: _shader::SRLAB2_DECODE.into(),
+    }
+}
 
 /// A simple shader invocation.
 ///
@@ -47,8 +154,10 @@ pub(crate) trait FragmentShaderData: core::fmt::Debug {
     /// If two invocations return the same key then they are optimized and _not_ recompiled.
     /// Instead, we reuse setup from a previous shader module creation.
     fn key(&self) -> Option<FragmentShaderKey>;
+
     /// The SPIR-V shader source code.
-    fn spirv_source(&self) -> Cow<'static, [u8]>;
+    fn spirv_source(&self) -> Arc<[u8]>;
+
     /// Encode the shader's data into the buffer, returning the descriptor to that.
     ///
     /// FIXME: context of the buffer is imported. It may be possible to re-use a previous
@@ -56,6 +165,7 @@ pub(crate) trait FragmentShaderData: core::fmt::Debug {
     fn binary_data(&self, _: &mut Vec<u8>) -> Option<BufferInitContent> {
         None
     }
+
     /// Number of argument images consumed by the shader.
     /// This must match the number of arguments provided as `High::PushOperand`.
     fn num_args(&self) -> u32 {
@@ -68,8 +178,8 @@ impl FragmentShaderData for ShaderInvocation {
         Some(FragmentShaderKey::Dynamic(self.spirv.as_ptr() as usize))
     }
 
-    fn spirv_source(&self) -> Cow<'static, [u8]> {
-        Cow::Owned(self.spirv.to_vec())
+    fn spirv_source(&self) -> Arc<[u8]> {
+        self.spirv.clone()
     }
 
     fn binary_data(&self, buffer: &mut Vec<u8>) -> Option<BufferInitContent> {
@@ -171,13 +281,13 @@ impl FragmentShaderInvocation {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum PaintOnTopKind {
-    Copy,
+    Copy { spirv: Arc<[u8]> },
 }
 
-impl PaintOnTopKind {
-    pub(crate) fn fragment_shader(&self) -> &'static [u8] {
-        match self {
-            PaintOnTopKind::Copy => FRAG_COPY,
+impl ShadersCore {
+    pub fn paint_copy(&self) -> PaintOnTopKind {
+        PaintOnTopKind::Copy {
+            spirv: self.frag_copy.clone(),
         }
     }
 }
@@ -187,14 +297,17 @@ impl FragmentShaderData for PaintOnTopKind {
         Some(FragmentShaderKey::PaintOnTop(self.clone()))
     }
 
-    fn spirv_source(&self) -> Cow<'static, [u8]> {
-        Cow::Borrowed(self.fragment_shader())
+    fn spirv_source(&self) -> Arc<[u8]> {
+        match self {
+            PaintOnTopKind::Copy { spirv } => spirv.clone(),
+        }
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct LinearColorTransform {
     pub matrix: RowMatrix,
+    pub spirv: Arc<[u8]>,
 }
 
 impl FragmentShaderData for LinearColorTransform {
@@ -202,8 +315,8 @@ impl FragmentShaderData for LinearColorTransform {
         Some(FragmentShaderKey::LinearColorMatrix)
     }
 
-    fn spirv_source(&self) -> Cow<'static, [u8]> {
-        Cow::Borrowed(FRAG_LINEAR)
+    fn spirv_source(&self) -> Arc<[u8]> {
+        self.spirv.clone()
     }
 
     fn binary_data(&self, buffer: &mut Vec<u8>) -> Option<BufferInitContent> {
