@@ -12,8 +12,8 @@ pub struct ShaderData {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Shader {
-    data: ShaderData,
-    spirv: Arc<[u8]>,
+    pub data: ShaderData,
+    pub spirv: Arc<[u8]>,
 }
 
 impl ShaderData {

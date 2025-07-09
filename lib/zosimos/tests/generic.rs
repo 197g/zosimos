@@ -3,7 +3,9 @@
 mod util;
 
 use zosimos::buffer::{ColorChannel, Descriptor, SampleParts, Texel};
-use zosimos::command::{self, Bilinear, CommandBuffer, CommandError, GenericDeclaration, Palette};
+use zosimos::command::{
+    self, Bilinear, CommandBuffer, CommandError, GenericDeclaration, Linker, Palette,
+};
 use zosimos::pool::Pool;
 use zosimos::program::{Capabilities, Program};
 
@@ -16,7 +18,7 @@ fn generic_palette() {
     env_logger::init();
 
     const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: ANY,
         ..Default::default()
     });
@@ -93,8 +95,8 @@ fn generic_palette() {
     })()
     .expect("build generic inner function sequence");
 
-    let plan = main
-        .link(&[], &[fixed_palette], &[&[1], &[]])
+    let plan = Linker::from_included()
+        .link(&main, &[], &[fixed_palette], &[&[1], &[]])
         .expect("compile full function sequence");
 
     let capabilities = Capabilities::from({

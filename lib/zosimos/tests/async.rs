@@ -2,7 +2,7 @@
 mod util;
 
 use zosimos::buffer::Descriptor;
-use zosimos::command::{self, CommandBuffer, Register};
+use zosimos::command::{self, CommandBuffer, Linker, Register};
 use zosimos::pool::{Gpu, Pool, PoolKey};
 use zosimos::program::{Capabilities, Program};
 use zosimos::run::{Executable, Retire};
@@ -15,7 +15,7 @@ async fn step_async() {
     env_logger::init();
 
     const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: ANY,
         ..Default::default()
     });
@@ -99,7 +99,10 @@ pub async fn run_once_with_output<T>(
     binds: impl IntoIterator<Item = (Register, PoolKey)>,
     output: impl FnOnce(&mut Retire) -> T,
 ) -> T {
-    let plan = commands.compile().expect("Could build command buffer");
+    let plan = Linker::from_included()
+        .compile(&commands)
+        .expect("Could build command buffer");
+
     let capabilities = Capabilities::from({
         let mut devices = pool.iter_devices();
         devices.next().expect("the pool to contain a device")
@@ -132,7 +135,7 @@ pub async fn run_executable_with_output<T>(
     let poll_gpu = |gpu: Gpu| {
         let handle = tokio::task::spawn(async move {
             loop {
-                gpu.device().poll(wgpu::Maintain::Poll);
+                gpu.device().poll(wgpu::PollType::Poll);
                 // The cancellation point!
                 tokio::task::yield_now().await;
             }

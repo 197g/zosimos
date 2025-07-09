@@ -13,7 +13,7 @@
 //! whitepoint.
 use zosimos::{
     buffer::{Descriptor, ImageBuffer},
-    command::CommandBuffer,
+    command::{CommandBuffer, Linker},
     pool::Pool,
 };
 
@@ -22,7 +22,7 @@ fn test_descriptor_as_gpu_texture() {
     let mut pool = Pool::new();
 
     const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: ANY,
         ..Default::default()
     });
@@ -55,7 +55,9 @@ fn check_input_zeros_as(descriptor: Descriptor, pool: &mut Pool, instance: &wgpu
         "Descriptor changed while writing to output, this is odd"
     );
 
-    let program = command.compile().expect("Valid full program");
+    let program = Linker::from_included()
+        .compile(&command)
+        .expect("Valid full program");
 
     let adapter = program
         .choose_adapter(

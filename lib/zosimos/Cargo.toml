@@ -53,6 +53,10 @@ features = ["png"]
 version = "1"
 features = ["macros", "rt-multi-thread"]
 
+[dev-dependencies.wgpu]
+workspace = true
+features = ["vulkan"]
+
 [[test]]
 name = "buffer"
 

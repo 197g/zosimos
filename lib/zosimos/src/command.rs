@@ -12,8 +12,8 @@ use crate::program::{
 };
 
 pub use crate::shaders::bilinear::ShaderData as Bilinear;
-pub use crate::shaders::distribution_normal2d::Shader as DistributionNormal2d;
-pub use crate::shaders::fractal_noise::Shader as FractalNoise;
+pub use crate::shaders::distribution_normal2d::ShaderData as DistributionNormal2d;
+pub use crate::shaders::fractal_noise::ShaderData as FractalNoise;
 
 use crate::shaders::{
     self, FragmentShaderInvocation, PaintOnTopKind, ShaderInvocation, ShadersCore, ShadersStd,
@@ -229,9 +229,9 @@ pub struct InvocationArguments<'lt> {
 pub(crate) enum ConstructOp {
     Bilinear(Bilinear),
     /// A 2d normal distribution.
-    DistributionNormal(shaders::DistributionNormal2d),
+    DistributionNormal(DistributionNormal2d),
     /// Fractal noise
-    DistributionNoise(shaders::FractalNoise),
+    DistributionNoise(FractalNoise),
     /// A color to repeat on pixels.
     Solid([f32; 4]),
     /// An existing buffer to use.
@@ -716,7 +716,7 @@ enum CommandErrorKind {
 }
 
 impl Linker {
-    fn from_included() -> &'static Self {
+    pub fn from_included() -> &'static Self {
         static INSTANCE: std::sync::OnceLock<Linker> = std::sync::OnceLock::new();
         INSTANCE.get_or_init(|| Linker {
             core: crate::shaders::included_shaders_core(),
@@ -1568,7 +1568,7 @@ impl CommandBuffer {
     pub fn distribution_normal2d(
         &mut self,
         describe: Descriptor,
-        distribution: shaders::DistributionNormal2d,
+        distribution: DistributionNormal2d,
     ) -> Result<Register, CommandError> {
         if !describe.is_consistent() {
             return Err(CommandError {
@@ -1598,7 +1598,7 @@ impl CommandBuffer {
     pub fn distribution_fractal_noise(
         &mut self,
         describe: Descriptor,
-        distribution: shaders::FractalNoise,
+        distribution: FractalNoise,
     ) -> Result<Register, CommandError> {
         if !describe.is_consistent() {
             return Err(CommandError {
@@ -1920,7 +1920,7 @@ impl WithKnob<'_> {
     pub fn distribution_normal2d(
         &mut self,
         describe: Descriptor,
-        distribution: shaders::DistributionNormal2d,
+        distribution: DistributionNormal2d,
     ) -> Result<Register, CommandError> {
         self.regular_with_knob(move |cmd| cmd.distribution_normal2d(describe, distribution))
     }
@@ -1929,7 +1929,7 @@ impl WithKnob<'_> {
     pub fn distribution_fractal_noise(
         &mut self,
         describe: Descriptor,
-        distribution: shaders::FractalNoise,
+        distribution: FractalNoise,
     ) -> Result<Register, CommandError> {
         self.regular_with_knob(move |cmd| cmd.distribution_fractal_noise(describe, distribution))
     }
@@ -2029,7 +2029,7 @@ impl WithBuffer<'_> {
     pub fn distribution_normal2d(
         &mut self,
         describe: Descriptor,
-        distribution: shaders::DistributionNormal2d,
+        distribution: DistributionNormal2d,
     ) -> Result<Register, CommandError> {
         self.regular_with_buffer(core::mem::size_of::<[f32; 8]>() as u64, move |cmd| {
             cmd.distribution_normal2d(describe, distribution)
@@ -2040,7 +2040,7 @@ impl WithBuffer<'_> {
     pub fn distribution_fractal_noise(
         &mut self,
         describe: Descriptor,
-        distribution: shaders::FractalNoise,
+        distribution: FractalNoise,
     ) -> Result<Register, CommandError> {
         #[repr(C)]
         #[repr(align(8))]
@@ -2408,7 +2408,10 @@ impl Linker {
                                 fn_: Initializer::PaintFullScreen {
                                     shader: ParameterizedFragment {
                                         invocation: FragmentShaderInvocation::Normal2d(
-                                            distribution.clone(),
+                                            shaders::DistributionNormal2d {
+                                                data: distribution.clone(),
+                                                spirv: std.distribution_normal2d.clone(),
+                                            },
                                         ),
                                         knob,
                                     },
@@ -2425,7 +2428,10 @@ impl Linker {
                                 fn_: Initializer::PaintFullScreen {
                                     shader: ParameterizedFragment {
                                         invocation: FragmentShaderInvocation::FractalNoise(
-                                            noise_params.clone(),
+                                            shaders::FractalNoise {
+                                                data: noise_params.clone(),
+                                                spirv: std.fractal_noise.clone(),
+                                            },
                                         ),
                                         knob,
                                     },
