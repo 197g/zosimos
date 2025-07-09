@@ -3249,7 +3249,7 @@ impl ColorConversion {
                 FragmentShaderInvocation::Oklab(shaders::oklab::Shader {
                     xyz_transform: from_xyz_matrix,
                     direction: shaders::oklab::Coding::Decode {
-                        spirv: std.oklab_encode.clone(),
+                        spirv: std.oklab_decode.clone(),
                     },
                 })
             }
