@@ -3,6 +3,7 @@ use core::num::NonZeroU32;
 use std::sync::Arc;
 
 use crate::buffer::{SampleBits, SampleParts, Transfer as RgbTransfer};
+use serde::{Deserialize, Serialize};
 use wgpu::TextureFormat;
 
 /// A potentially non-linear transform we apply to the linear values before we store them and
@@ -21,7 +22,7 @@ pub(crate) struct XyzParameter {
     pub transfer: Transfer,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Shaders {
     pub decode_r8ui_x4: Arc<[u8]>,
     pub decode_r16ui_x2: Arc<[u8]>,

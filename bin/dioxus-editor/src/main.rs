@@ -56,7 +56,7 @@ fn App() -> Element {
         let canvas = element.dyn_into().unwrap();
         tracing::info!("Surface booting");
 
-        let linker = crate::linker::from_assets().await;
+        let linker = crate::linker::from_assets().await.unwrap();
         let surface = surface::Surface::new(canvas, linker).unwrap();
 
         tracing::info!("Surface booted");

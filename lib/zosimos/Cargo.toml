@@ -7,6 +7,7 @@ license = "MPL-2.0"
 
 [dependencies]
 bytemuck = "1.4"
+serde.workspace = true
 waker-fn = "1.1"
 
 [dependencies.image]

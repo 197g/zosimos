@@ -8,6 +8,9 @@ default-features = false
 features = ["png"]
 [workspace.dependencies.image-canvas]
 version = "0.5.1"
+[workspace.dependencies.serde]
+version = "1"
+features = ["derive", "rc"]
 [workspace.dependencies.tracing]
 version = "0.1.41"
 [workspace.dependencies.tracing-subscriber]

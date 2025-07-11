@@ -1,6 +1,8 @@
 use crate::color_matrix::RowMatrix;
 use crate::program::BufferInitContent;
+
 use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 
 pub mod bilinear;
 pub mod box3;
@@ -15,7 +17,7 @@ pub mod stage;
 
 /// All the programs we need for the core language, i.e. everything that is not functions but just
 /// managing the buffers, moving between bytes and textures type system.
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct ShadersCore {
     pub vert_noop: Arc<[u8]>,
     pub frag_copy: Arc<[u8]>,
@@ -24,7 +26,7 @@ pub struct ShadersCore {
     pub stage: stage::Shaders,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct ShadersStd {
     pub bilinear: Arc<[u8]>,
     pub box3: Arc<[u8]>,

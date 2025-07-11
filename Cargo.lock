@@ -378,7 +378,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57663b653d948a338bfb3eeba9bb2fd5fcfaecb9e199e87e1eda4d9e8b240fd9"
 dependencies = [
  "ciborium-io",
- "half",
+ "half 2.6.0",
 ]
 
 [[package]]
@@ -1074,7 +1074,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f83197f59927b46c04a183a619b7c29df34e63e63c7869320862268c0ef687e0"
 dependencies = [
  "bit_field",
- "half",
+ "half 2.6.0",
  "lebe",
  "miniz_oxide",
  "rayon-core",
@@ -1436,6 +1436,12 @@ dependencies = [
  "tokio-util",
  "tracing",
 ]
+
+[[package]]
+name = "half"
+version = "1.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b43ede17f21864e81be2fa654110bf1e793774238d86ef8555c37e6519c0403"
 
 [[package]]
 name = "half"
@@ -2104,7 +2110,7 @@ dependencies = [
  "bitflags 2.9.1",
  "cfg_aliases",
  "codespan-reporting",
- "half",
+ "half 2.6.0",
  "hashbrown 0.15.4",
  "hexf-parse",
  "indexmap",
@@ -2901,6 +2907,16 @@ dependencies = [
  "js-sys",
  "serde",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "serde_cbor"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bef2ebfde456fb76bbcf9f59315333decc4fda0b2b44b420243c11e0f5ec1f5"
+dependencies = [
+ "half 1.8.3",
+ "serde",
 ]
 
 [[package]]
@@ -4349,6 +4365,7 @@ dependencies = [
  "image-canvas",
  "log",
  "palette",
+ "serde",
  "slotmap",
  "tokio",
  "waker-fn",
@@ -4367,6 +4384,7 @@ dependencies = [
  "image",
  "reqwest",
  "serde",
+ "serde_cbor",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -4375,6 +4393,7 @@ dependencies = [
  "web-sys",
  "wgpu",
  "zosimos",
+ "zosimos-std",
 ]
 
 [[package]]
