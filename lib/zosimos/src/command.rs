@@ -716,16 +716,6 @@ enum CommandErrorKind {
     Unimplemented,
 }
 
-impl Linker {
-    pub fn from_included() -> &'static Self {
-        static INSTANCE: std::sync::OnceLock<Linker> = std::sync::OnceLock::new();
-        INSTANCE.get_or_init(|| Linker {
-            core: crate::shaders::included_shaders_core(),
-            std: crate::shaders::included_shaders_std(),
-        })
-    }
-}
-
 /// Intrinsically defined methods of manipulating images.
 ///
 /// FIXME: missing functions
@@ -2071,6 +2061,11 @@ impl WithBuffer<'_> {
 
 /// Turn a command buffer into a `Program`.
 impl Linker {
+    #[cfg(test)]
+    pub fn from_included() -> &'static Self {
+        zosimos_std::from_included()
+    }
+
     pub fn compile(&self, program: &CommandBuffer) -> Result<Program, CompileError> {
         self.link(program, &[], &[], &[])
     }

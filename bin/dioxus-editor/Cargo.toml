@@ -26,7 +26,7 @@ tracing-subscriber.workspace = true
 tracing-web.workspace = true
 url = "2.5"
 web-sys.workspace = true
-wgpu = { workspace = true, default-featurs = false, features = ["webgl"] }
+wgpu = { workspace = true, default-features = false, features = ["webgl"] }
 zosimos.workspace = true
 
 [features]

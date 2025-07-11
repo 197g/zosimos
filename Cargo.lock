@@ -4349,11 +4349,11 @@ dependencies = [
  "image-canvas",
  "log",
  "palette",
- "shaderc",
  "slotmap",
  "tokio",
  "waker-fn",
  "wgpu",
+ "zosimos-std",
 ]
 
 [[package]]
@@ -4394,6 +4394,14 @@ dependencies = [
  "image-canvas",
  "zosimos",
  "zosimos-lang",
+]
+
+[[package]]
+name = "zosimos-std"
+version = "0.0.0"
+dependencies = [
+ "shaderc",
+ "zosimos",
 ]
 
 [[package]]

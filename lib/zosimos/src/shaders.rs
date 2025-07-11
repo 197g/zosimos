@@ -40,97 +40,6 @@ pub struct ShadersStd {
     pub srlab2_decode: Arc<[u8]>,
 }
 
-/// A vertex box shader, rendering a sole quad with given vertex and uv coordinate system.
-pub const VERT_NOOP: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/box.vert.v"));
-
-/// A 'noop' copy from the sampled texture to the output color based on the supplied UVs.
-pub const FRAG_COPY: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/copy.frag.v"));
-#[allow(dead_code)]
-pub const FRAG_MIX_RGBA: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/inject.frag.v"));
-/// a linear transformation on rgb color.
-pub const FRAG_LINEAR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/linear.frag.v"));
-
-mod _shader {
-    pub const BILINEAR: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/bilinear.frag.v"));
-
-    pub const BOX: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/box3.frag.v"));
-
-    pub const DISTRIBUTION_NORMAL_2D: &[u8] = include_bytes!(concat!(
-        env!("OUT_DIR"),
-        "/spirv/distribution_normal2d.frag.v"
-    ));
-
-    pub const FRACTAL_NOISE: &[u8] =
-        include_bytes!(concat!(env!("OUT_DIR"), "/spirv/fractal_noise.frag.v"));
-
-    pub const INJECT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/inject.frag.v"));
-
-    pub const OKLAB_ENCODE: &[u8] =
-        include_bytes!(concat!(env!("OUT_DIR"), "/spirv/oklab_encode.frag.v"));
-    pub const OKLAB_DECODE: &[u8] =
-        include_bytes!(concat!(env!("OUT_DIR"), "/spirv/oklab_decode.frag.v"));
-
-    pub const PALETTE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/palette.frag.v"));
-
-    pub const SOLID_RGBA: &[u8] =
-        include_bytes!(concat!(env!("OUT_DIR"), "/spirv/solid_rgb.frag.v"));
-
-    pub const SRLAB2_ENCODE: &[u8] =
-        include_bytes!(concat!(env!("OUT_DIR"), "/spirv/srlab2_encode.frag.v"));
-    pub const SRLAB2_DECODE: &[u8] =
-        include_bytes!(concat!(env!("OUT_DIR"), "/spirv/srlab2_decode.frag.v"));
-
-    pub fn stage() -> super::stage::Shaders {
-        super::stage::Shaders {
-            decode_r8ui_x4: std::sync::Arc::from(
-                &include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_d8ui.frag.v"))[..],
-            ),
-            decode_r16ui_x2: std::sync::Arc::from(
-                &include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_d16ui.frag.v"))[..],
-            ),
-            decode_r32ui: std::sync::Arc::from(
-                &include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_d32ui.frag.v"))[..],
-            ),
-            encode_r8ui_x4: std::sync::Arc::from(
-                &include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_e8ui.frag.v"))[..],
-            ),
-            encode_r16ui_x2: std::sync::Arc::from(
-                &include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_e16ui.frag.v"))[..],
-            ),
-            encode_r32ui: std::sync::Arc::from(
-                &include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_e32ui.frag.v"))[..],
-            ),
-        }
-    }
-}
-
-pub fn included_shaders_core() -> ShadersCore {
-    ShadersCore {
-        vert_noop: VERT_NOOP.into(),
-        frag_copy: FRAG_COPY.into(),
-        frag_mix_rgba: FRAG_MIX_RGBA.into(),
-        frag_linear: FRAG_LINEAR.into(),
-        stage: _shader::stage(),
-    }
-}
-
-pub fn included_shaders_std() -> ShadersStd {
-    ShadersStd {
-        bilinear: _shader::BILINEAR.into(),
-        box3: _shader::BOX.into(),
-        distribution_normal2d: _shader::DISTRIBUTION_NORMAL_2D.into(),
-        fractal_noise: _shader::FRACTAL_NOISE.into(),
-        inject: _shader::INJECT.into(),
-        linear_color_transform: FRAG_LINEAR.into(),
-        oklab_encode: _shader::OKLAB_ENCODE.into(),
-        oklab_decode: _shader::OKLAB_DECODE.into(),
-        palette: _shader::PALETTE.into(),
-        solid_rgb: _shader::SOLID_RGBA.into(),
-        srlab2_encode: _shader::SRLAB2_ENCODE.into(),
-        srlab2_decode: _shader::SRLAB2_DECODE.into(),
-    }
-}
-
 /// A simple shader invocation.
 ///
 /// This represents _one_ instance of a shader invocation. The compilation will evaluate the
@@ -285,7 +194,7 @@ pub(crate) enum PaintOnTopKind {
 }
 
 impl ShadersCore {
-    pub fn paint_copy(&self) -> PaintOnTopKind {
+    pub(crate) fn paint_copy(&self) -> PaintOnTopKind {
         PaintOnTopKind::Copy {
             spirv: self.frag_copy.clone(),
         }
@@ -327,4 +236,3 @@ impl FragmentShaderData for LinearColorTransform {
 
 pub(crate) use self::distribution_normal2d::Shader as DistributionNormal2d;
 pub(crate) use self::fractal_noise::Shader as FractalNoise;
-pub(crate) use self::palette::Shader as PaletteShader;

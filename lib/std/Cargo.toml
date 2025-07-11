@@ -1,0 +1,10 @@
+[package]
+name = "zosimos-std"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+zosimos.workspace = true
+
+[build-dependencies]
+shaderc = "0.8"

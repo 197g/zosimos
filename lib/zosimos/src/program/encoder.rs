@@ -1080,7 +1080,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
 
             let vertex = self.vertex_shader(
                 Some(shaders::VertexShader::Noop),
-                shader_include_to_spirv(shaders::VERT_NOOP),
+                shader_include_to_spirv(&*self.library.core.vert_noop),
             )?;
 
             let shader = shader.shader();
@@ -1820,7 +1820,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
                 // not and importantly shouldn't need to care.
                 let vertex = self.vertex_shader(
                     Some(shaders::VertexShader::Noop),
-                    shader_include_to_spirv(shaders::VERT_NOOP))?;
+                    shader_include_to_spirv(&*self.library.core.vert_noop))?;
 
                 let super::ParameterizedFragment { invocation, knob: _ } = shader;
 
@@ -1867,7 +1867,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
             Initializer::PaintFullScreen { shader } => {
                 let vertex = self.vertex_shader(
                     Some(shaders::VertexShader::Noop),
-                    shader_include_to_spirv(shaders::VERT_NOOP))?;
+                    shader_include_to_spirv(&*self.library.core.vert_noop))?;
 
                 let super::ParameterizedFragment { invocation, knob } = shader;
 
@@ -1899,7 +1899,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
             Initializer::ToLinearOpto { parameter, stage_kind } => {
                 let vertex = self.vertex_shader(
                     Some(shaders::VertexShader::Noop),
-                    shader_include_to_spirv(shaders::VERT_NOOP))?;
+                    shader_include_to_spirv(&*self.library.core.vert_noop))?;
 
                 let shader = self.library.core.stage.decode_src(*stage_kind);
 
@@ -1947,7 +1947,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
             Initializer::FromLinearOpto { parameter, stage_kind } => {
                 let vertex = self.vertex_shader(
                     Some(shaders::VertexShader::Noop),
-                    shader_include_to_spirv(shaders::VERT_NOOP))?;
+                    shader_include_to_spirv(&*self.library.core.vert_noop))?;
 
                 let shader = self.library.core.stage.encode_src(*stage_kind);
 

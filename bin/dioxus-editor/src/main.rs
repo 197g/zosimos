@@ -37,7 +37,7 @@ fn init_tracing() {
 
 #[expect(non_snake_case)]
 fn App() -> Element {
-    fn surface_from_document() -> surface::Surface {
+    async fn surface_from_document() -> surface::Surface {
         tracing::info!("Acquiring WebGPU canvas");
 
         // FIXME: errors here should fail the boot mechanism, not panic.
@@ -53,10 +53,9 @@ fn App() -> Element {
             .unwrap();
 
         let canvas = element.dyn_into().unwrap();
-
         tracing::info!("Surface booting");
 
-        let linker = zosimos::command::Linker::from_included().clone();
+        let linker = crate::linker::from_assets().await;
         let surface = surface::Surface::new(canvas, linker).unwrap();
 
         tracing::info!("Surface booted");
@@ -67,13 +66,15 @@ fn App() -> Element {
 
     let write_render = render_count.clone();
     use_effect(move || {
-        let mut write_render = write_render;
-        let mut surface = surface_from_document();
-        let compute = compute::Compute::new(&mut surface);
+        spawn(async {
+            let mut write_render = write_render;
+            let mut surface = surface_from_document().await;
+            let compute = compute::Compute::new(&mut surface);
 
-        // Feedback so we can debug what happened in rendering.
-        let on_render = Box::new(move || write_render += 1);
-        spawn(run_surface(surface, compute, on_render));
+            // Feedback so we can debug what happened in rendering.
+            let on_render = Box::new(move || write_render += 1);
+            run_surface(surface, compute, on_render).await
+        });
     });
 
     const STYLE: Asset = asset!("/assets/main.css");

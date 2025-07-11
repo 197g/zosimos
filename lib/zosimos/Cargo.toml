@@ -30,11 +30,8 @@ default-features = false
 
 [dependencies.wgpu]
 workspace = true
-default-featurs = false
+default-features = false
 features = ["spirv"]
-
-[build-dependencies]
-shaderc = "0.8"
 
 ## Local, Testing dependencies.
 
@@ -43,6 +40,7 @@ crc32fast = "1.2"
 # Until next image version breaks this..
 blockhash = "1"
 env_logger = "0.11"
+zosimos-std.workspace = true
 
 [dev-dependencies.image]
 version = "0.25.0"
