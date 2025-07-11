@@ -10,8 +10,7 @@ bytemuck = "1.4"
 waker-fn = "1.1"
 
 [dependencies.image]
-version = "0.25.0"
-default-features = false
+workspace = true
 
 [dependencies.image-canvas]
 workspace = true
@@ -43,8 +42,7 @@ env_logger = "0.11"
 zosimos-std.workspace = true
 
 [dev-dependencies.image]
-version = "0.25.0"
-default-features = false
+workspace = true
 features = ["png"]
 
 [dev-dependencies.tokio]

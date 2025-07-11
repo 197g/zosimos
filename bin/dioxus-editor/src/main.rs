@@ -1,5 +1,6 @@
 /// Where we own all the resources of the browser.
 mod compute;
+mod linker;
 mod surface;
 
 use dioxus::prelude::*;
@@ -66,7 +67,7 @@ fn App() -> Element {
 
     let write_render = render_count.clone();
     use_effect(move || {
-        spawn(async {
+        spawn(async move {
             let mut write_render = write_render;
             let mut surface = surface_from_document().await;
             let compute = compute::Compute::new(&mut surface);
