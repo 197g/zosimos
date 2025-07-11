@@ -7,7 +7,7 @@ use std::sync::{Arc, mpsc};
 use crate::surface::Surface;
 
 use zosimos::buffer::Descriptor;
-use zosimos::command::{CommandBuffer, Register};
+use zosimos::command::{CommandBuffer, Linker, Register};
 use zosimos::pool::{GpuKey, Pool, PoolBridge, PoolKey, SwapChain};
 use zosimos::run::StepLimits;
 
@@ -18,6 +18,7 @@ pub struct Compute {
     /// The bridge between the surface and compute pools.
     bridge: PoolBridge,
     gpu: GpuKey,
+    linker: Linker,
     /// Descriptors for each in the swap chain.
     render_target: Vec<PoolKey>,
     adapter: Arc<wgpu::Adapter>,
@@ -59,6 +60,7 @@ struct Exit {
 impl Compute {
     /// Create a compute graph supplying to a surface.
     pub fn new(surface: &mut Surface) -> Compute {
+        let linker = surface.linker();
         let mut pool = Pool::new();
 
         let adapter = surface.adapter();
@@ -88,6 +90,7 @@ impl Compute {
             pool,
             bridge,
             gpu,
+            linker,
             render_target,
             adapter,
             program,
@@ -142,7 +145,7 @@ impl Compute {
             return Box::new(core::future::ready(()));
         };
 
-        let Ok(program) = commands.buffer.compile() else {
+        let Ok(program) = self.linker.compile(&commands.buffer) else {
             return Box::new(core::future::ready(()));
         };
 

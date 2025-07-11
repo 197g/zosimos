@@ -59,11 +59,11 @@ struct PoolEntry {
     descriptor: Descriptor,
 }
 
-#[derive(Default)]
 struct Runtimes {
     /// An executable color normalizing the chosen output picture into the output texture, then
     /// writing it as an output.
     normalizing: Option<NormalizingExe>,
+    linker: command::Linker,
 }
 
 /// Another compiled program, which puts the image onto the screen.
@@ -78,9 +78,8 @@ struct NormalizingExe {
 impl Surface {
     pub fn new(
         canvas: web_sys::HtmlCanvasElement,
+        linker: command::Linker,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        const ANY: wgpu::Backends = wgpu::Backends::all();
-
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
@@ -178,7 +177,10 @@ impl Surface {
                 presentable: PoolKey::null(),
                 descriptor,
             },
-            runtimes: Runtimes::default(),
+            runtimes: Runtimes {
+                normalizing: None,
+                linker,
+            },
         };
 
         let gpu = that.reconfigure_gpu();
@@ -195,6 +197,10 @@ impl Surface {
 
     pub fn adapter(&self) -> Arc<Adapter> {
         self.adapter.clone()
+    }
+
+    pub fn linker(&self) -> command::Linker {
+        self.runtimes.linker.clone()
     }
 
     /// Create a pool that shares the device with this surface.
@@ -436,7 +442,7 @@ impl Runtimes {
         let converted = cmd.color_convert(resized, surface.color.clone(), surface.texel.clone())?;
         let (out_reg, _desc) = cmd.render(converted)?;
 
-        let program = cmd.compile()?;
+        let program = self.linker.compile(&cmd)?;
         let exe = program.lower_to(caps)?;
 
         tracing::info!("{}", exe.dot());

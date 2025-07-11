@@ -34,6 +34,7 @@ pub struct Register(pub(crate) usize);
 /// The standard library, and others in time..
 ///
 /// Also holds the physical resources, the concrete shader resources.
+#[derive(Clone)]
 pub struct Linker {
     pub core: ShadersCore,
     pub std: ShadersStd,

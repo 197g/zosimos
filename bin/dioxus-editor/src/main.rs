@@ -56,7 +56,8 @@ fn App() -> Element {
 
         tracing::info!("Surface booting");
 
-        let surface = surface::Surface::new(canvas).unwrap();
+        let linker = zosimos::command::Linker::from_included().clone();
+        let surface = surface::Surface::new(canvas, linker).unwrap();
 
         tracing::info!("Surface booted");
         surface
@@ -102,10 +103,10 @@ fn App() -> Element {
 
 async fn run_surface(
     mut surface: surface::Surface,
-    mut compute: compute::Compute,
+    compute: compute::Compute,
     mut on_render_cb: Box<impl FnMut()>,
 ) {
-    let mut chain = surface.configure_swap_chain(1 << 2);
+    let chain = surface.configure_swap_chain(1 << 2);
     tracing::trace!("Running surface");
     const BACKGROUND: Asset = asset!("/assets/background.png");
 
