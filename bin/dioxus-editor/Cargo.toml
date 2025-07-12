@@ -37,6 +37,3 @@ zosimos-std.workspace = true
 
 [features]
 default = []
-
-[profile.release]
-lto = true

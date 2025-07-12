@@ -34,12 +34,36 @@ path = "lib/std"
 
 [profile]
 
+[profile.dioxus]
+inherits = "release"
+strip = "symbols"
+
+[profile.release-with-assertions]
+inherits = "release"
+debug-assertions = true
+
 [profile.wasm-dev]
 inherits = "dev"
 opt-level = 1
 
-[profile.server-dev]
-inherits = "dev"
+## From here on is our local development profile.
+## We use it for CI and testing, not release.
+## Important parts are compiling image deps with release.
 
-[profile.android-dev]
-inherits = "dev"
+[profile.dev.package."*"]
+debug = 0
+overflow-checks = false
+
+[profile.test.package]
+adler2.opt-level = 3
+crc32fast.opt-level = 3
+miniz_oxide.opt-level = 3
+png.opt-level = 3
+flate2.opt-level = 3
+
+[profile.dev.package]
+adler2.opt-level = 3
+crc32fast.opt-level = 3
+miniz_oxide.opt-level = 3
+png.opt-level = 3
+flate2.opt-level = 3
