@@ -47,7 +47,7 @@ fn mandelbrot() {
     let _ = env_logger::try_init();
 
     const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: ANY,
         ..Default::default()
     });
@@ -60,7 +60,7 @@ fn mandelbrot() {
     let descriptor = Program::minimal_device_descriptor();
     let descriptor = wgpu::DeviceDescriptor {
         required_limits: wgpu::Limits {
-            max_texture_dimension_2d: 1 << 12,
+            max_texture_dimension_2d: 1 << 8,
             ..descriptor.required_limits
         },
         ..descriptor
@@ -70,7 +70,7 @@ fn mandelbrot() {
         .expect("to get a device");
 
     // Actual program begins here.
-    let target = image::DynamicImage::ImageRgba8(image::RgbaImage::new(2048, 2048));
+    let target = image::DynamicImage::ImageRgba8(image::RgbaImage::new(1 << 8, 1 << 8));
 
     let mut commands = CommandBuffer::default();
     let brot = commands.construct_dynamic(&Mandelbrot::new(Descriptor {
@@ -137,7 +137,7 @@ fn crt() {
     let _ = env_logger::try_init();
 
     const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: ANY,
         ..Default::default()
     });
@@ -222,7 +222,7 @@ fn flat_correction() {
     let _ = env_logger::try_init();
 
     const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: ANY,
         ..Default::default()
     });

@@ -38,3 +38,8 @@ body {
 #header {
     max-width: 1200px;
 }
+
+#main-canvas {
+    width: calc(max(50vw, 320px));
+    aspect-ratio: 16/9;
+}

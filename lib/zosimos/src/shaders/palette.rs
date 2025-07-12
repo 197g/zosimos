@@ -1,18 +1,21 @@
-use std::borrow::Cow;
+use std::sync::Arc;
 
 use super::{BufferInitContent, FragmentShaderData, FragmentShaderKey};
 use crate::buffer::{ChannelPosition, ColorChannel};
 
-/// a linear transformation on rgb color.
-pub const SHADER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/palette.frag.v"));
-
 /// The palette shader, computing texture coordinates from an input color.
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Shader {
+pub struct ShaderData {
     pub(crate) x_coord: [f32; 4],
     pub(crate) y_coord: [f32; 4],
     pub(crate) base_x: i32,
     pub(crate) base_y: i32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Shader {
+    pub data: ShaderData,
+    pub spirv: Arc<[u8]>,
 }
 
 impl ChannelPosition {
@@ -46,17 +49,17 @@ impl FragmentShaderData for Shader {
         Some(FragmentShaderKey::Palette)
     }
 
-    fn spirv_source(&self) -> Cow<'static, [u8]> {
-        Cow::Borrowed(SHADER)
+    fn spirv_source(&self) -> Arc<[u8]> {
+        self.spirv.clone()
     }
 
     #[rustfmt::skip]
     fn binary_data(&self, buffer: &mut Vec<u8>) -> Option<BufferInitContent> {
         let mat4x2 = [
-            self.x_coord[0], self.y_coord[0],
-            self.x_coord[1], self.y_coord[1],
-            self.x_coord[2], self.y_coord[2],
-            self.x_coord[3], self.y_coord[3],
+            self.data.x_coord[0], self.data.y_coord[0],
+            self.data.x_coord[1], self.data.y_coord[1],
+            self.data.x_coord[2], self.data.y_coord[2],
+            self.data.x_coord[3], self.data.y_coord[3],
         ];
 
         Some(BufferInitContent::new(buffer, &mat4x2))
