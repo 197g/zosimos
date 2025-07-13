@@ -1,18 +1,18 @@
 use super::{BufferInitContent, FragmentShaderData, FragmentShaderKey};
-use std::borrow::Cow;
 use std::f32::consts::PI as PIf32;
-
-/// a linear transformation on rgb color.
-pub const SHADER: &[u8] = include_bytes!(concat!(
-    env!("OUT_DIR"),
-    "/spirv/distribution_normal2d.frag.v"
-));
+use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Shader {
+pub struct ShaderData {
     pub expectation: [f32; 2],
     pub covariance_inverse: Mat2,
     pub pseudo_determinant: f32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Shader {
+    pub data: ShaderData,
+    pub spirv: Arc<[u8]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -20,16 +20,16 @@ pub struct Mat2 {
     row_major: [f32; 4],
 }
 
-impl Shader {
+impl ShaderData {
     /// Construct a centered normal distribution based on variance in X and Y direction.
-    pub fn with_diagonal(var0: f32, var1: f32) -> Shader {
+    pub fn with_diagonal(var0: f32, var1: f32) -> Self {
         let d0 = if var0 == 0.0 { 0.0 } else { 1.0 / var0 };
         let d1 = if var1 == 0.0 { 0.0 } else { 1.0 / var1 };
 
         let f0 = if var0 == 0.0 { 1.0 } else { 2.0 * PIf32 * var0 };
         let f1 = if var1 == 0.0 { 1.0 } else { 2.0 * PIf32 * var1 };
 
-        Shader {
+        ShaderData {
             expectation: [0.0, 0.0],
             covariance_inverse: Mat2 {
                 row_major: [d0, 0.0, 0.0, d1],
@@ -47,7 +47,7 @@ impl Shader {
     /// stable when the direction vector is very short.
     /// # Panics
     /// This method will panic when the squared length of `dir` is not finite.
-    pub fn with_direction(dir: [f32; 2]) -> Shader {
+    pub fn with_direction(dir: [f32; 2]) -> Self {
         let [x, y] = dir;
         // The covariance matrix is given by dir^T·dir, with one non-zero eigen value
         // dir·dir^T = length². The pseudo determinant is thusly length².
@@ -90,7 +90,7 @@ impl Shader {
             herbie_symmetric(y, y),
         ];
 
-        Shader {
+        ShaderData {
             expectation: [0.0, 0.0],
             covariance_inverse: Mat2 { row_major },
             pseudo_determinant: 2.0 * PIf32 * length_sq,
@@ -103,22 +103,22 @@ impl FragmentShaderData for Shader {
         Some(FragmentShaderKey::DistributionNormal2d)
     }
 
-    fn spirv_source(&self) -> Cow<'static, [u8]> {
-        Cow::Borrowed(SHADER)
+    fn spirv_source(&self) -> Arc<[u8]> {
+        self.spirv.clone()
     }
 
     #[rustfmt::skip]
     fn binary_data(&self, buffer: &mut Vec<u8>) -> Option<BufferInitContent> {
-        let Shader {
+        let ShaderData {
             expectation: exp,
             covariance_inverse: Mat2 { row_major: inv },
             pseudo_determinant: det,
-        } = self;
+        } = self.data;
 
         let rgb_data: [f32; 8] = [
             exp[0], exp[1],
             inv[0], inv[1], inv[2], inv[3],
-            *det,
+            det,
             0.0
         ];
 

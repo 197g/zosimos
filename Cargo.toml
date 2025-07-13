@@ -1,5 +1,5 @@
 [workspace]
-members = ["bin/dioxus-editor", "bin/editor", "bin/sh", "lib/lang", "lib/zosimos"]
+members = ["bin/dioxus-editor", "bin/sh", "lib/lang", "lib/std", "lib/zosimos"]
 resolver = "3"
 
 [workspace.dependencies.image]
@@ -8,6 +8,9 @@ default-features = false
 features = ["png"]
 [workspace.dependencies.image-canvas]
 version = "0.5.1"
+[workspace.dependencies.serde]
+version = "1"
+features = ["derive", "rc"]
 [workspace.dependencies.tracing]
 version = "0.1.41"
 [workspace.dependencies.tracing-subscriber]
@@ -26,15 +29,47 @@ default-features = false
 path = "lib/zosimos"
 [workspace.dependencies.zosimos-lang]
 path = "lib/lang"
+[workspace.dependencies.zosimos-std]
+path = "lib/std"
 
 [profile]
+
+[profile.dioxus]
+inherits = "release"
+strip = "symbols"
+
+[profile.release-with-assertions]
+inherits = "release"
+debug-assertions = true
 
 [profile.wasm-dev]
 inherits = "dev"
 opt-level = 1
+
+## From here on is our local development profile.
+## We use it for CI and testing, not release.
+## Important parts are compiling image deps with release.
+
+[profile.dev.package."*"]
+debug = 0
+overflow-checks = false
+
+[profile.test.package]
+adler2.opt-level = 3
+crc32fast.opt-level = 3
+miniz_oxide.opt-level = 3
+png.opt-level = 3
+flate2.opt-level = 3
 
 [profile.server-dev]
 inherits = "dev"
 
 [profile.android-dev]
 inherits = "dev"
+
+[profile.dev.package]
+adler2.opt-level = 3
+crc32fast.opt-level = 3
+miniz_oxide.opt-level = 3
+png.opt-level = 3
+flate2.opt-level = 3

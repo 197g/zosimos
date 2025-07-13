@@ -1,16 +1,19 @@
-use std::borrow::Cow;
+use std::sync::Arc;
 
 use super::{BufferInitContent, FragmentShaderData, FragmentShaderKey};
 
-/// a bilinear initialization on a (up to) 4-component color.
-pub const SHADER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/inject.frag.v"));
-
 /// The palette shader, computing texture coordinates from an input color.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Shader {
+pub struct ShaderData {
     pub mix: [f32; 4],
     /// How to determine the color to mix from the foreground (dot product).
     pub color: [f32; 4],
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Shader {
+    pub data: ShaderData,
+    pub spirv: Arc<[u8]>,
 }
 
 impl FragmentShaderData for Shader {
@@ -18,12 +21,13 @@ impl FragmentShaderData for Shader {
         Some(FragmentShaderKey::Inject)
     }
 
-    fn spirv_source(&self) -> Cow<'static, [u8]> {
-        Cow::Borrowed(SHADER)
+    fn spirv_source(&self) -> Arc<[u8]> {
+        self.spirv.clone()
     }
 
     fn binary_data(&self, buffer: &mut Vec<u8>) -> Option<BufferInitContent> {
-        Some(BufferInitContent::new(buffer, &[self.mix, self.color]))
+        let data = [self.data.mix, self.data.color];
+        Some(BufferInitContent::new(buffer, &data))
     }
 
     fn num_args(&self) -> u32 {

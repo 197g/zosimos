@@ -59,11 +59,11 @@ struct PoolEntry {
     descriptor: Descriptor,
 }
 
-#[derive(Default)]
 struct Runtimes {
     /// An executable color normalizing the chosen output picture into the output texture, then
     /// writing it as an output.
     normalizing: Option<NormalizingExe>,
+    linker: command::Linker,
 }
 
 /// Another compiled program, which puts the image onto the screen.
@@ -78,9 +78,8 @@ struct NormalizingExe {
 impl Surface {
     pub fn new(
         canvas: web_sys::HtmlCanvasElement,
+        linker: command::Linker,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        const ANY: wgpu::Backends = wgpu::Backends::all();
-
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
@@ -178,7 +177,10 @@ impl Surface {
                 presentable: PoolKey::null(),
                 descriptor,
             },
-            runtimes: Runtimes::default(),
+            runtimes: Runtimes {
+                normalizing: None,
+                linker,
+            },
         };
 
         let gpu = that.reconfigure_gpu();
@@ -195,6 +197,10 @@ impl Surface {
 
     pub fn adapter(&self) -> Arc<Adapter> {
         self.adapter.clone()
+    }
+
+    pub fn linker(&self) -> command::Linker {
+        self.runtimes.linker.clone()
     }
 
     /// Create a pool that shares the device with this surface.
@@ -262,7 +268,7 @@ impl Surface {
         self.window.surface.get_current_texture()
     }
 
-    pub fn present_to_texture(&mut self, surface_tex: &mut wgpu::SurfaceTexture) {
+    pub async fn present_to_texture(&mut self, surface_tex: &mut wgpu::SurfaceTexture) {
         let gpu = match self.entry.gpu {
             Some(key) => key,
             None => {
@@ -281,19 +287,23 @@ impl Surface {
 
         let present = self.entry.presentable;
 
-        #[cfg(not(target_arch = "wasm32"))]
-        let start = std::time::Instant::now();
-
         let present_desc = self.pool.entry(present).unwrap().descriptor();
         let surface_desc = self.pool.entry(surface).unwrap().descriptor();
 
         let device = self.pool.iter_devices().next().unwrap();
         let capabilities = Capabilities::from(device);
 
-        let normalize = self
-            .runtimes
-            .get_or_insert_normalizing_exe(present_desc, surface_desc, capabilities)
-            .expect("Should be able to build resize");
+        let normalize = match self.runtimes.get_or_insert_normalizing_exe(
+            present_desc,
+            surface_desc,
+            capabilities,
+        ) {
+            Ok(normalize) => normalize,
+            Err(e) => {
+                tracing::warn!("Failed to generate program to paint with {e:?}");
+                return;
+            }
+        };
 
         let in_reg = normalize.in_reg;
         let out_reg = normalize.out_reg;
@@ -311,10 +321,15 @@ impl Surface {
         // Bind the input.
         run.bind(in_reg, present)
             .expect("Valid binding for our executable input");
+
         // Bind the output.
         run.bind_render(out_reg, surface)
             .expect("Valid binding for our executable output");
-        tracing::warn!("Sub- optimality: {:?}", surface_tex.suboptimal);
+
+        if surface_tex.suboptimal {
+            tracing::error!("Sub- optimality: {:?}", surface_tex.suboptimal);
+        }
+
         let recovered = run.recover_buffers();
         tracing::warn!("{:?}", recovered);
 
@@ -332,8 +347,12 @@ impl Surface {
             let mut step = running
                 .step_to(limits)
                 .expect("Valid binding to start our executable");
-            step.block_on()
+            tracing::info!("Step started");
+
+            step.finish(|_| ())
+                .await
                 .expect("Valid binding to block on our execution");
+            tracing::info!("Step done");
         }
 
         tracing::warn!("{:?}", running.resources_used());
@@ -430,7 +449,7 @@ impl Runtimes {
         let converted = cmd.color_convert(resized, surface.color.clone(), surface.texel.clone())?;
         let (out_reg, _desc) = cmd.render(converted)?;
 
-        let program = cmd.compile()?;
+        let program = self.linker.compile(&cmd)?;
         let exe = program.lower_to(caps)?;
 
         tracing::info!("{}", exe.dot());
