@@ -4368,6 +4368,7 @@ dependencies = [
  "serde",
  "slotmap",
  "tokio",
+ "tracing",
  "waker-fn",
  "wgpu",
  "zosimos-std",

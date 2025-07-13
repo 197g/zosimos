@@ -143,7 +143,7 @@ async fn run_surface(
         /* Running means: we make a certain frame target on the canvas itself. We also run the actual
          * compute program at its own pace.
          */
-        tracing::trace!("Tick {frame_idx}");
+        tracing::info!("Tick {frame_idx}");
         notify.notified().await;
 
         let mut texture = match surface.get_current_texture() {
@@ -155,7 +155,7 @@ async fn run_surface(
         };
 
         tracing::trace!("Rendering presentation frame");
-        surface.present_to_texture(&mut texture);
+        surface.present_to_texture(&mut texture).await;
 
         tracing::trace!("Presenting frame");
         texture.present();

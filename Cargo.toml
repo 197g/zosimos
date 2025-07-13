@@ -61,6 +61,12 @@ miniz_oxide.opt-level = 3
 png.opt-level = 3
 flate2.opt-level = 3
 
+[profile.server-dev]
+inherits = "dev"
+
+[profile.android-dev]
+inherits = "dev"
+
 [profile.dev.package]
 adler2.opt-level = 3
 crc32fast.opt-level = 3

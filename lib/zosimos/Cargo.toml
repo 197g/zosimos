@@ -1,13 +1,14 @@
 [package]
 name = "zosimos"
 version = "0.0.0"
-authors = ["Andreas Molzer <andreas.molzer@gmx.de>"]
+authors = ["Aurelia Molzer <5550310+197g@users.noreply.github.com>"]
 edition = "2021"
 license = "MPL-2.0"
 
 [dependencies]
 bytemuck = "1.4"
 serde.workspace = true
+tracing.workspace = true
 waker-fn = "1.1"
 
 [dependencies.image]

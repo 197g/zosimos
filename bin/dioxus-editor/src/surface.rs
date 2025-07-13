@@ -268,8 +268,7 @@ impl Surface {
         self.window.surface.get_current_texture()
     }
 
-    // FIXME: should be async in the run portion.
-    pub fn present_to_texture(&mut self, surface_tex: &mut wgpu::SurfaceTexture) {
+    pub async fn present_to_texture(&mut self, surface_tex: &mut wgpu::SurfaceTexture) {
         let gpu = match self.entry.gpu {
             Some(key) => key,
             None => {
@@ -294,10 +293,11 @@ impl Surface {
         let device = self.pool.iter_devices().next().unwrap();
         let capabilities = Capabilities::from(device);
 
-        let normalize = match self
-            .runtimes
-            .get_or_insert_normalizing_exe(present_desc, surface_desc, capabilities)
-        {
+        let normalize = match self.runtimes.get_or_insert_normalizing_exe(
+            present_desc,
+            surface_desc,
+            capabilities,
+        ) {
             Ok(normalize) => normalize,
             Err(e) => {
                 tracing::warn!("Failed to generate program to paint with {e:?}");
@@ -326,7 +326,10 @@ impl Surface {
         run.bind_render(out_reg, surface)
             .expect("Valid binding for our executable output");
 
-        tracing::warn!("Sub- optimality: {:?}", surface_tex.suboptimal);
+        if surface_tex.suboptimal {
+            tracing::error!("Sub- optimality: {:?}", surface_tex.suboptimal);
+        }
+
         let recovered = run.recover_buffers();
         tracing::warn!("{:?}", recovered);
 
@@ -344,8 +347,12 @@ impl Surface {
             let mut step = running
                 .step_to(limits)
                 .expect("Valid binding to start our executable");
-            step.block_on()
+            tracing::info!("Step started");
+
+            step.finish(|_| ())
+                .await
                 .expect("Valid binding to block on our execution");
+            tracing::info!("Step done");
         }
 
         tracing::warn!("{:?}", running.resources_used());
