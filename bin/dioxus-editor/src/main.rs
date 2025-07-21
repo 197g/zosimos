@@ -38,7 +38,11 @@ fn init_tracing() {
 
 #[expect(non_snake_case)]
 fn App() -> Element {
-    async fn surface_from_document() -> surface::Surface {
+    let next_frame = std::sync::Arc::<surface::NextFrameInformation>::default();
+
+    async fn surface_from_document(
+        comms: std::sync::Arc<surface::NextFrameInformation>,
+    ) -> surface::Surface {
         tracing::info!("Acquiring WebGPU canvas");
 
         // FIXME: errors here should fail the boot mechanism, not panic.
@@ -57,19 +61,23 @@ fn App() -> Element {
         tracing::info!("Surface booting");
 
         let linker = crate::linker::from_assets().await.unwrap();
-        let surface = surface::Surface::new(canvas, linker).unwrap();
+        let surface = surface::Surface::new(comms, canvas, linker).unwrap();
 
         tracing::info!("Surface booted");
         surface
     }
 
-    let render_count = use_signal(|| 0);
+    let render_count = use_signal(|| 1);
 
     let write_render = render_count.clone();
+    let next_frame_surface = next_frame.clone();
+
     use_effect(move || {
+        let next_frame_surface = next_frame_surface.clone();
+
         spawn(async move {
             let mut write_render = write_render;
-            let mut surface = surface_from_document().await;
+            let mut surface = surface_from_document(next_frame_surface).await;
             let compute = compute::Compute::new(&mut surface);
 
             // Feedback so we can debug what happened in rendering.
@@ -91,12 +99,22 @@ fn App() -> Element {
                         let height = cbox.to_u32().height;
                         let width = cbox.to_u32().width;
 
+                        next_frame.recreate.store(true, std::sync::atomic::Ordering::Relaxed);
+
                         document::eval(&format!(r#"
                             let el = document.getElementById("main-canvas");
+                            el.getContext("webgpu")?.unconfigure();
                             el.width = {width};
                             el.height = {height};
                         "#));
                     }
+                }
+            },
+            div {
+                p {
+                    color: "#fff",
+                    "Frame: ",
+                    b { "{render_count}" }
                 }
             }
         }

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicBool};
 
 use zosimos::buffer::{Color, Descriptor, SampleParts, Texel, Transfer};
 use zosimos::command;
@@ -23,6 +23,13 @@ pub struct Surface {
     entry: PoolEntry,
     /// The runtime state from stealth paint.
     runtimes: Runtimes,
+    /// Asynchronous, mostly lock-free, communication that we want in the next frame.
+    next_frame: Arc<NextFrameInformation>,
+}
+
+#[derive(Default)]
+pub struct NextFrameInformation {
+    pub recreate: AtomicBool,
 }
 
 struct Window {
@@ -34,12 +41,14 @@ struct Window {
 #[derive(Debug)]
 pub enum PresentationError {
     GpuDeviceLost,
+    Surface(wgpu::SurfaceError),
 }
 
 impl core::fmt::Display for PresentationError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             PresentationError::GpuDeviceLost => write!(f, "Gpu device was lost"),
+            PresentationError::Surface(e) => write!(f, "Gpu surface error: {e:?}"),
         }
     }
 }
@@ -77,6 +86,7 @@ struct NormalizingExe {
 
 impl Surface {
     pub fn new(
+        next_frame: Arc<NextFrameInformation>,
         canvas: web_sys::HtmlCanvasElement,
         linker: command::Linker,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
@@ -181,6 +191,7 @@ impl Surface {
                 normalizing: None,
                 linker,
             },
+            next_frame,
         };
 
         let gpu = that.reconfigure_gpu();
@@ -264,8 +275,35 @@ impl Surface {
         chain.present(&mut self.pool)
     }
 
-    pub fn get_current_texture(&mut self) -> Result<wgpu::SurfaceTexture, wgpu::SurfaceError> {
-        self.window.surface.get_current_texture()
+    pub fn get_current_texture(&mut self) -> Result<wgpu::SurfaceTexture, PresentationError> {
+        let texture = self
+            .window
+            .surface
+            .get_current_texture()
+            .map_err(PresentationError::Surface)?;
+
+        let recreate = texture.suboptimal
+            || self
+                .next_frame
+                .recreate
+                .swap(false, std::sync::atomic::Ordering::Relaxed);
+
+        if !recreate {
+            return Ok(texture);
+        }
+
+        tracing::warn!(
+            "Recreating drawing surface. Due to suboptimal: {:?}",
+            texture.suboptimal
+        );
+
+        drop(texture);
+        self.outdated()?;
+
+        self.window
+            .surface
+            .get_current_texture()
+            .map_err(PresentationError::Surface)
     }
 
     pub async fn present_to_texture(&mut self, surface_tex: &mut wgpu::SurfaceTexture) {
@@ -325,10 +363,6 @@ impl Surface {
         // Bind the output.
         run.bind_render(out_reg, surface)
             .expect("Valid binding for our executable output");
-
-        if surface_tex.suboptimal {
-            tracing::error!("Sub- optimality: {:?}", surface_tex.suboptimal);
-        }
 
         let recovered = run.recover_buffers();
         tracing::warn!("{:?}", recovered);
