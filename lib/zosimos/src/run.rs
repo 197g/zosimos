@@ -3157,7 +3157,8 @@ impl SyncPoint<'_> {
             let _ready = Pin::new(&mut submits_done_future).poll(cx);
             debug_assert!(matches!(_ready, std::task::Poll::Pending));
             std::task::Poll::Pending
-        }).await;
+        })
+        .await;
 
         tracing::info!("Step future done");
 

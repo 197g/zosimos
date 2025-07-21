@@ -1,8 +1,8 @@
 use crate::color_matrix::RowMatrix;
 use crate::program::BufferInitContent;
 
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 pub mod bilinear;
 pub mod box3;
