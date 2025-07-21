@@ -1,6 +1,9 @@
-use crate::buffer::{SampleBits, SampleParts, Transfer as RgbTransfer};
 /// Detailed structs for the stage shader.
 use core::num::NonZeroU32;
+use std::sync::Arc;
+
+use crate::buffer::{SampleBits, SampleParts, Transfer as RgbTransfer};
+use serde::{Deserialize, Serialize};
 use wgpu::TextureFormat;
 
 /// A potentially non-linear transform we apply to the linear values before we store them and
@@ -17,6 +20,16 @@ pub(crate) struct XyzParameter {
     pub bits: SampleBits,
     pub parts: SampleParts,
     pub transfer: Transfer,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Shaders {
+    pub decode_r8ui_x4: Arc<[u8]>,
+    pub decode_r16ui_x2: Arc<[u8]>,
+    pub decode_r32ui: Arc<[u8]>,
+    pub encode_r8ui_x4: Arc<[u8]>,
+    pub encode_r16ui_x2: Arc<[u8]>,
+    pub encode_r32ui: Arc<[u8]>,
 }
 
 /// Defines the bit representation we use for our own coding of texels and pixels.
@@ -147,24 +160,6 @@ impl StageKind {
         }
     }
 
-    pub(crate) fn decode_src(self) -> &'static [u8] {
-        match self {
-            Self::R8uiX4 => include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_d8ui.frag.v")),
-            Self::R16uiX2 => include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_d16ui.frag.v")),
-            Self::R32ui => include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_d32ui.frag.v")),
-            _ => todo!("{:?}", self),
-        }
-    }
-
-    pub(crate) fn encode_src(self) -> &'static [u8] {
-        match self {
-            Self::R8uiX4 => include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_e8ui.frag.v")),
-            Self::R16uiX2 => include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_e16ui.frag.v")),
-            Self::R32ui => include_bytes!(concat!(env!("OUT_DIR"), "/spirv/stage_e32ui.frag.v")),
-            _ => todo!("{:?}", self),
-        }
-    }
-
     pub(crate) fn texture_format(self) -> TextureFormat {
         // Chosen with compatibility to:
         // <https://www.w3.org/TR/webgpu/#plain-color-formats>
@@ -199,6 +194,26 @@ impl StageKind {
         let sub = self.horizontal_subfactor();
         let w = w.get() / sub + u32::from(w.get() % sub > 0);
         (NonZeroU32::new(w).unwrap(), h)
+    }
+}
+
+impl Shaders {
+    pub(crate) fn decode_src(&self, kind: StageKind) -> Arc<[u8]> {
+        match kind {
+            StageKind::R8uiX4 => self.decode_r8ui_x4.clone(),
+            StageKind::R16uiX2 => self.decode_r16ui_x2.clone(),
+            StageKind::R32ui => self.decode_r32ui.clone(),
+            _ => todo!("{:?}", self),
+        }
+    }
+
+    pub(crate) fn encode_src(&self, kind: StageKind) -> Arc<[u8]> {
+        match kind {
+            StageKind::R8uiX4 => self.encode_r8ui_x4.clone(),
+            StageKind::R16uiX2 => self.encode_r16ui_x2.clone(),
+            StageKind::R32ui => self.encode_r32ui.clone(),
+            _ => todo!("{:?}", self),
+        }
     }
 }
 

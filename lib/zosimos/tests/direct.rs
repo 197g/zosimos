@@ -1,6 +1,6 @@
 //! This test ensures that the direct `Program::launch` interface can be used.
 use zosimos::buffer::Descriptor;
-use zosimos::command::{CommandBuffer, Rectangle};
+use zosimos::command::{CommandBuffer, Linker, Rectangle};
 use zosimos::pool::{Pool, PoolKey};
 
 #[path = "util.rs"]
@@ -14,7 +14,7 @@ fn standard() {
     env_logger::init();
 
     const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: ANY,
         ..Default::default()
     });
@@ -70,7 +70,10 @@ fn run_blending(
 
     let (output, _outformat) = commands.output(result).expect("Valid for output");
 
-    let plan = commands.compile().expect("Could build command buffer");
+    let plan = Linker::from_included()
+        .compile(&commands)
+        .expect("Could build command buffer");
+
     let adapter = plan
         .choose_adapter(adapters)
         .expect("Did not find any adapter for executing the blend operation");

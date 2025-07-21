@@ -17,5 +17,5 @@ pub mod command;
 pub mod pool;
 pub mod program;
 pub mod run;
-mod shaders;
+pub mod shaders;
 mod util;

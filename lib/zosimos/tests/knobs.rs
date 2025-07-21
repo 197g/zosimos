@@ -6,7 +6,7 @@
 mod util;
 
 use zosimos::buffer::Descriptor;
-use zosimos::command::{self, CommandBuffer};
+use zosimos::command::{self, CommandBuffer, Linker};
 use zosimos::pool::{Pool, PoolKey};
 use zosimos::program::{Capabilities, Program};
 
@@ -20,7 +20,7 @@ fn knob_on_overlay() {
     env_logger::init();
 
     const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: ANY,
         ..Default::default()
     });
@@ -128,7 +128,10 @@ fn run_bilinear(
     let (output_affine, _outformat) = commands.output(result_affine).expect("Valid for output");
 
     let executable = {
-        let plan = commands.compile().expect("Could build command buffer");
+        let plan = Linker::from_included()
+            .compile(&commands)
+            .expect("Could build command buffer");
+
         let capabilities = Capabilities::from({
             let mut devices = pool.iter_devices();
             devices.next().expect("the pool to contain a device")

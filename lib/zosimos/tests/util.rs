@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 use std::path::Path;
 
-use zosimos::command::{CommandBuffer, Register};
+use zosimos::command::{CommandBuffer, Linker, Register};
 use zosimos::pool::PoolImage;
 use zosimos::pool::{Pool, PoolKey};
 use zosimos::program::{Capabilities, Knob};
@@ -65,7 +65,12 @@ pub fn run_once_with_output<T>(
     binds: impl IntoIterator<Item = (Register, PoolKey)>,
     output: impl FnOnce(&mut Retire) -> T,
 ) -> T {
-    let plan = commands.compile().expect("Could build command buffer");
+    let linker = Linker::from_included();
+
+    let plan = linker
+        .compile(&commands)
+        .expect("Could build command buffer");
+
     let capabilities = Capabilities::from({
         let mut devices = pool.iter_devices();
         devices.next().expect("the pool to contain a device")

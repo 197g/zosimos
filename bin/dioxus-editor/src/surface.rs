@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, atomic::AtomicBool};
 
 use zosimos::buffer::{Color, Descriptor, SampleParts, Texel, Transfer};
 use zosimos::command;
@@ -23,6 +23,13 @@ pub struct Surface {
     entry: PoolEntry,
     /// The runtime state from stealth paint.
     runtimes: Runtimes,
+    /// Asynchronous, mostly lock-free, communication that we want in the next frame.
+    next_frame: Arc<NextFrameInformation>,
+}
+
+#[derive(Default)]
+pub struct NextFrameInformation {
+    pub recreate: AtomicBool,
 }
 
 struct Window {
@@ -34,12 +41,14 @@ struct Window {
 #[derive(Debug)]
 pub enum PresentationError {
     GpuDeviceLost,
+    Surface(wgpu::SurfaceError),
 }
 
 impl core::fmt::Display for PresentationError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             PresentationError::GpuDeviceLost => write!(f, "Gpu device was lost"),
+            PresentationError::Surface(e) => write!(f, "Gpu surface error: {e:?}"),
         }
     }
 }
@@ -59,11 +68,11 @@ struct PoolEntry {
     descriptor: Descriptor,
 }
 
-#[derive(Default)]
 struct Runtimes {
     /// An executable color normalizing the chosen output picture into the output texture, then
     /// writing it as an output.
     normalizing: Option<NormalizingExe>,
+    linker: command::Linker,
 }
 
 /// Another compiled program, which puts the image onto the screen.
@@ -77,10 +86,10 @@ struct NormalizingExe {
 
 impl Surface {
     pub fn new(
+        next_frame: Arc<NextFrameInformation>,
         canvas: web_sys::HtmlCanvasElement,
+        linker: command::Linker,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        const ANY: wgpu::Backends = wgpu::Backends::all();
-
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             ..Default::default()
@@ -178,7 +187,11 @@ impl Surface {
                 presentable: PoolKey::null(),
                 descriptor,
             },
-            runtimes: Runtimes::default(),
+            runtimes: Runtimes {
+                normalizing: None,
+                linker,
+            },
+            next_frame,
         };
 
         let gpu = that.reconfigure_gpu();
@@ -195,6 +208,10 @@ impl Surface {
 
     pub fn adapter(&self) -> Arc<Adapter> {
         self.adapter.clone()
+    }
+
+    pub fn linker(&self) -> command::Linker {
+        self.runtimes.linker.clone()
     }
 
     /// Create a pool that shares the device with this surface.
@@ -258,11 +275,38 @@ impl Surface {
         chain.present(&mut self.pool)
     }
 
-    pub fn get_current_texture(&mut self) -> Result<wgpu::SurfaceTexture, wgpu::SurfaceError> {
-        self.window.surface.get_current_texture()
+    pub fn get_current_texture(&mut self) -> Result<wgpu::SurfaceTexture, PresentationError> {
+        let texture = self
+            .window
+            .surface
+            .get_current_texture()
+            .map_err(PresentationError::Surface)?;
+
+        let recreate = texture.suboptimal
+            || self
+                .next_frame
+                .recreate
+                .swap(false, std::sync::atomic::Ordering::Relaxed);
+
+        if !recreate {
+            return Ok(texture);
+        }
+
+        tracing::warn!(
+            "Recreating drawing surface. Due to suboptimal: {:?}",
+            texture.suboptimal
+        );
+
+        drop(texture);
+        self.outdated()?;
+
+        self.window
+            .surface
+            .get_current_texture()
+            .map_err(PresentationError::Surface)
     }
 
-    pub fn present_to_texture(&mut self, surface_tex: &mut wgpu::SurfaceTexture) {
+    pub async fn present_to_texture(&mut self, surface_tex: &mut wgpu::SurfaceTexture) {
         let gpu = match self.entry.gpu {
             Some(key) => key,
             None => {
@@ -281,19 +325,23 @@ impl Surface {
 
         let present = self.entry.presentable;
 
-        #[cfg(not(target_arch = "wasm32"))]
-        let start = std::time::Instant::now();
-
         let present_desc = self.pool.entry(present).unwrap().descriptor();
         let surface_desc = self.pool.entry(surface).unwrap().descriptor();
 
         let device = self.pool.iter_devices().next().unwrap();
         let capabilities = Capabilities::from(device);
 
-        let normalize = self
-            .runtimes
-            .get_or_insert_normalizing_exe(present_desc, surface_desc, capabilities)
-            .expect("Should be able to build resize");
+        let normalize = match self.runtimes.get_or_insert_normalizing_exe(
+            present_desc,
+            surface_desc,
+            capabilities,
+        ) {
+            Ok(normalize) => normalize,
+            Err(e) => {
+                tracing::warn!("Failed to generate program to paint with {e:?}");
+                return;
+            }
+        };
 
         let in_reg = normalize.in_reg;
         let out_reg = normalize.out_reg;
@@ -311,10 +359,11 @@ impl Surface {
         // Bind the input.
         run.bind(in_reg, present)
             .expect("Valid binding for our executable input");
+
         // Bind the output.
         run.bind_render(out_reg, surface)
             .expect("Valid binding for our executable output");
-        tracing::warn!("Sub- optimality: {:?}", surface_tex.suboptimal);
+
         let recovered = run.recover_buffers();
         tracing::warn!("{:?}", recovered);
 
@@ -332,8 +381,12 @@ impl Surface {
             let mut step = running
                 .step_to(limits)
                 .expect("Valid binding to start our executable");
-            step.block_on()
+            tracing::info!("Step started");
+
+            step.finish(|_| ())
+                .await
                 .expect("Valid binding to block on our execution");
+            tracing::info!("Step done");
         }
 
         tracing::warn!("{:?}", running.resources_used());
@@ -430,7 +483,7 @@ impl Runtimes {
         let converted = cmd.color_convert(resized, surface.color.clone(), surface.texel.clone())?;
         let (out_reg, _desc) = cmd.render(converted)?;
 
-        let program = cmd.compile()?;
+        let program = self.linker.compile(&cmd)?;
         let exe = program.lower_to(caps)?;
 
         tracing::info!("{}", exe.dot());

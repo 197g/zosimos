@@ -1,21 +1,13 @@
-use std::borrow::Cow;
+use std::sync::Arc;
 
 use super::{BufferInitContent, FragmentShaderData, FragmentShaderKey};
 use crate::color_matrix::RowMatrix;
 
-/// a linear transformation on rgb color.
-pub const SHADER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/box3.frag.v"));
-
 /// The palette shader, computing texture coordinates from an input color.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Shader {
-    matrix: RowMatrix,
-}
-
-impl Shader {
-    pub fn new(matrix: RowMatrix) -> Self {
-        Shader { matrix }
-    }
+    pub matrix: RowMatrix,
+    pub spirv: Arc<[u8]>,
 }
 
 impl FragmentShaderData for Shader {
@@ -25,8 +17,8 @@ impl FragmentShaderData for Shader {
     }
 
     /// The SPIR-V shader source code.
-    fn spirv_source(&self) -> Cow<'static, [u8]> {
-        Cow::Borrowed(SHADER)
+    fn spirv_source(&self) -> Arc<[u8]> {
+        self.spirv.clone()
     }
 
     /// Encode the shader's data into the buffer, returning the descriptor to that.

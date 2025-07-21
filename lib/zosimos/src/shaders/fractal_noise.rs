@@ -1,18 +1,22 @@
-use super::{BufferInitContent, FragmentShaderData, FragmentShaderKey};
-use std::borrow::Cow;
+use std::sync::Arc;
 
-/// a linear transformation on rgb color.
-pub const SHADER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/spirv/fractal_noise.frag.v"));
+use super::{BufferInitContent, FragmentShaderData, FragmentShaderKey};
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Shader {
+pub struct ShaderData {
     pub num_octaves: u32,
     pub initial_amplitude: f32,
     pub amplitude_damping: f32,
     pub grid_scale: [f32; 2],
 }
 
-impl Shader {
+#[derive(Clone, Debug, PartialEq)]
+pub struct Shader {
+    pub data: ShaderData,
+    pub spirv: Arc<[u8]>,
+}
+
+impl ShaderData {
     /// Construct a fractal noise pattern with a specific number of octaves.
     pub fn with_octaves(num_octaves: u32) -> Self {
         let amplitude_damping = 1.0f32;
@@ -48,7 +52,7 @@ impl Shader {
 #[test]
 fn test_set_damping() {
     let octaves = 8;
-    let mut params = Shader::with_octaves(octaves);
+    let mut params = ShaderData::with_octaves(octaves);
     params.set_damping(0.5);
 
     let mut amp = params.initial_amplitude;
@@ -65,22 +69,23 @@ impl FragmentShaderData for Shader {
         Some(FragmentShaderKey::FractalNoise)
     }
 
-    fn spirv_source(&self) -> Cow<'static, [u8]> {
-        Cow::Borrowed(SHADER)
+    fn spirv_source(&self) -> Arc<[u8]> {
+        self.spirv.clone()
     }
 
     fn binary_data(&self, buffer: &mut Vec<u8>) -> Option<BufferInitContent> {
-        let Self {
+        let ShaderData {
             num_octaves,
             initial_amplitude,
             amplitude_damping,
             grid_scale,
-        } = self;
+        } = self.data;
+
         let mut buffer_content = BufferInitContent::builder(buffer);
         buffer_content.extend_from_pods(&[grid_scale[0], grid_scale[1]]);
-        buffer_content.extend_from_pods(&[*initial_amplitude]);
-        buffer_content.extend_from_pods(&[*amplitude_damping]);
-        buffer_content.extend_from_pods(&[*num_octaves]);
+        buffer_content.extend_from_pods(&[initial_amplitude]);
+        buffer_content.extend_from_pods(&[amplitude_damping]);
+        buffer_content.extend_from_pods(&[num_octaves]);
         buffer_content.align_by_exponent(3);
 
         Some(buffer_content.build())

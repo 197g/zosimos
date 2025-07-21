@@ -34,6 +34,14 @@ pub struct Program {
     pub(crate) buffer_by_op: HashMap<usize, BufferDescriptor>,
     /// The maps of registers to persistent global knobs indices.
     pub(crate) knobs: HashMap<RegisterKnob, Knob>,
+    /// The map to shader programs (SPIR-V; for now).
+    pub(crate) library: Library,
+}
+
+#[derive(Clone)]
+pub struct Library {
+    pub(crate) std: shaders::ShadersStd,
+    pub(crate) core: shaders::ShadersCore,
 }
 
 pub(crate) struct FunctionLinked {
@@ -1420,7 +1428,7 @@ impl Program {
         function: &FunctionLinked,
         pool_plan: Option<&ImagePoolPlan>,
     ) -> Result<Encoder, LaunchError> {
-        let mut encoder = Encoder::default();
+        let mut encoder = Encoder::new(self.library.clone());
         encoder.enable_capabilities(capabilities);
 
         encoder.set_buffer_plan(&function.image_buffers);

@@ -1,12 +1,13 @@
+use core::future::Future;
+use core::pin::Pin;
+
 use std::collections::HashMap;
-use std::future::Future;
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 
 use crate::surface::Surface;
-use arc_swap::ArcSwapAny;
 
 use zosimos::buffer::Descriptor;
-use zosimos::command::{CommandBuffer, Register};
+use zosimos::command::{CommandBuffer, Linker, Register};
 use zosimos::pool::{GpuKey, Pool, PoolBridge, PoolKey, SwapChain};
 use zosimos::run::StepLimits;
 
@@ -17,10 +18,11 @@ pub struct Compute {
     /// The bridge between the surface and compute pools.
     bridge: PoolBridge,
     gpu: GpuKey,
+    linker: Linker,
     /// Descriptors for each in the swap chain.
     render_target: Vec<PoolKey>,
     adapter: Arc<wgpu::Adapter>,
-    program: ArcSwapAny<Arc<Program>>,
+    program: Arc<Program>,
     bindings: HashMap<Register, PoolKey>,
     swap_in_surface_pool: SwapChain,
     exit_send: mpsc::Sender<Exit>,
@@ -58,6 +60,7 @@ struct Exit {
 impl Compute {
     /// Create a compute graph supplying to a surface.
     pub fn new(surface: &mut Surface) -> Compute {
+        let linker = surface.linker();
         let mut pool = Pool::new();
 
         let adapter = surface.adapter();
@@ -81,13 +84,13 @@ impl Compute {
             have: 0,
         });
 
-        let program = ArcSwapAny::new(program);
         let (exit_send, exit) = mpsc::channel();
 
         Compute {
             pool,
             bridge,
             gpu,
+            linker,
             render_target,
             adapter,
             program,
@@ -116,7 +119,7 @@ impl Compute {
 
     /// Update the program to compute from inputs.
     pub fn acquire(&mut self, ctr: &mut ComputeTailCommands) -> bool {
-        let load = self.program.load();
+        let load = self.program.clone();
         let update = load.have != ctr.have;
 
         if !update {
@@ -129,8 +132,8 @@ impl Compute {
     }
 
     /// Spawn a task to maintain derivations.
-    pub fn run(&mut self) -> Box<dyn Future<Output = ()> + Send + 'static> {
-        let program = self.program.load().clone();
+    pub fn run(&mut self) -> Box<dyn Future<Output = ()> + 'static> {
+        let program = self.program.clone();
         let exit_send = self.exit_send.clone();
 
         let Some(commands) = &program.commands else {
@@ -138,11 +141,11 @@ impl Compute {
         };
 
         let &[out_reg] = &commands.out_registers[..] else {
-            log::warn!("Only support compute with precisely one output register");
+            tracing::warn!("Only support compute with precisely one output register");
             return Box::new(core::future::ready(()));
         };
 
-        let Ok(program) = commands.buffer.compile() else {
+        let Ok(program) = self.linker.compile(&commands.buffer) else {
             return Box::new(core::future::ready(()));
         };
 
@@ -151,7 +154,7 @@ impl Compute {
         };
 
         let Some(render_desc) = program.describe_register(out_reg) else {
-            log::warn!("Failed to describe output register, this is a bug");
+            tracing::warn!("Failed to describe output register, this is a bug");
             return Box::new(core::future::ready(()));
         };
 
@@ -177,7 +180,7 @@ impl Compute {
             let upload = from_image.set_texture(self.gpu, &render_desc);
 
             if upload.is_err() {
-                log::warn!("Failed to allocate output texture on GPU");
+                tracing::warn!("Failed to allocate output texture on GPU");
                 return Box::new(core::future::ready(()));
             }
 
@@ -257,38 +260,16 @@ impl Compute {
 
         surface.set_from_swap_chain(&mut self.swap_in_surface_pool);
     }
-}
 
-fn spin_block<R>(mut f: impl core::future::Future<Output = R>) -> R {
-    use core::hint::spin_loop;
-    use core::task::{Context, Poll};
-
-    let mut f = core::pin::pin!(f);
-
-    // create the context
-    let waker = waker_fn::waker_fn(|| {});
-    let mut ctx = Context::from_waker(&waker);
-
-    // poll future in a loop
-    loop {
-        match f.as_mut().poll(&mut ctx) {
-            Poll::Ready(o) => return o,
-            Poll::Pending => spin_loop(),
-        }
-    }
-}
-
-impl crate::winit::ScopedCompute for Compute {
-    fn maybe_launch<'a>(&mut self, scope: &'a std::thread::Scope<'a, '_>) {
+    fn maybe_launch<'a>(&mut self) -> Option<Pin<Box<dyn Future<Output = ()> + 'static>>> {
         if !self.dirty {
-            return;
+            return None;
         }
 
-        log::info!("Running compute due to changes");
+        tracing::info!("Scheduling compute due to pending changes");
         self.dirty = false;
+
         let future = self.run();
-        scope.spawn(move || {
-            spin_block(Box::into_pin(future));
-        });
+        Some(Box::into_pin(future))
     }
 }

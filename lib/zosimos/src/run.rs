@@ -3043,6 +3043,7 @@ impl SyncPoint<'_> {
         // A method that will ensure the GPU queue to be polled while its guard is live.
         queue_poll: impl FnOnce(Gpu) -> Guard,
     ) -> Result<(), StepError> {
+        tracing::info!("Finishing with guard");
         let Some(polled) = &mut self.future else {
             return Ok(());
         };
@@ -3137,20 +3138,32 @@ impl SyncPoint<'_> {
         // Technically optional, but polling this future will ensure that the effects of the
         // SyncPoint have been stabilized before stepping the next time. In particular, this
         // protects the guard from dropping before the need of polling is done.
-        let submits_done_future = ResubmitCheck {
+        let mut submits_done_future = ResubmitCheck {
             submit_check: check,
             submitted: 0,
             submit_done: Arc::default(),
             queue: submit_gpu.queue(),
         };
 
-        // FIXME: we may want to poll these as a single join to get timely status updates. But then
-        // again, this is just fine. We only need that we do no drop the `_guard` before all submit
-        // calls have been polled for.
-        let result = future.await;
+        tracing::info!("Waiting on step future");
+
+        // We're building our own select here, for two futures where only one can finish.
+        let result = std::future::poll_fn(move |cx| {
+            if let done @ std::task::Poll::Ready(_) = future.as_mut().poll(cx) {
+                return done;
+            };
+
+            // This does not finish before the other. Then we just drop it.
+            let _ready = Pin::new(&mut submits_done_future).poll(cx);
+            debug_assert!(matches!(_ready, std::task::Poll::Pending));
+            std::task::Poll::Pending
+        })
+        .await;
+
+        tracing::info!("Step future done");
+
         // Avoid polling the future (on Drop) after this point, it's done.
         self.future = None;
-        submits_done_future.await;
 
         result
     }
