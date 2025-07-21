@@ -11,7 +11,8 @@ jobs:
       matrix:
         rust: [stable, nightly]
         target:
-        - "x86_64-unknown-linux-gnu"
+        # Not relevant right now, we should only build core binaries here.
+        # - "x86_64-unknown-linux-gnu"
         - "wasm32-wasip1"
     steps:
     - uses: actions/checkout@v4
