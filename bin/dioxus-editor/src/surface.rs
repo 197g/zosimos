@@ -276,28 +276,31 @@ impl Surface {
     }
 
     pub fn get_current_texture(&mut self) -> Result<wgpu::SurfaceTexture, PresentationError> {
-        let texture = self
-            .window
-            .surface
-            .get_current_texture()
-            .map_err(PresentationError::Surface)?;
+        if !self
+            .next_frame
+            .recreate
+            .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            let texture = self
+                .window
+                .surface
+                .get_current_texture()
+                .map_err(PresentationError::Surface)?;
 
-        let recreate = texture.suboptimal
-            || self
-                .next_frame
-                .recreate
-                .swap(false, std::sync::atomic::Ordering::Relaxed);
+            tracing::warn!(
+                "Recreating drawing surface. Due to suboptimal: {:?}",
+                texture.suboptimal
+            );
 
-        if !recreate {
+            if texture.suboptimal {
+                self.next_frame
+                    .recreate
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+
             return Ok(texture);
         }
 
-        tracing::warn!(
-            "Recreating drawing surface. Due to suboptimal: {:?}",
-            texture.suboptimal
-        );
-
-        drop(texture);
         self.outdated()?;
 
         self.window

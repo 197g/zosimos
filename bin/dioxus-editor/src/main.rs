@@ -38,7 +38,7 @@ fn init_tracing() {
 
 #[expect(non_snake_case)]
 fn App() -> Element {
-    let next_frame = std::sync::Arc::<surface::NextFrameInformation>::default();
+    let next_frame = use_hook(|| std::sync::Arc::<surface::NextFrameInformation>::default());
 
     async fn surface_from_document(
         comms: std::sync::Arc<surface::NextFrameInformation>,
