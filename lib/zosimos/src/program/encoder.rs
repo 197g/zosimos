@@ -433,7 +433,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
                 }
             }
             // TODO: could validate indices.
-            Low::DrawOnce { .. } | Low::DrawIndexedZero { .. } | Low::SetPushConstants { .. } => {}
+            Low::DrawOnce { .. } | Low::DrawIndexedZero { .. } => {}
             Low::RunTopCommand => {
                 if !self.delayed_commands.is_empty() {
                     low = Low::RunBotToTop(self.delayed_commands.len() + 1);
@@ -1329,10 +1329,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
             let instruction_pointer = &mut self.instruction_pointer;
 
             *self.paint_pipeline_layout.get_or_insert_with(|| {
-                let descriptor = PipelineLayoutDescriptor {
-                    bind_group_layouts,
-                    push_constant_ranges: &[],
-                };
+                let descriptor = PipelineLayoutDescriptor { bind_group_layouts };
 
                 *instruction_pointer += 1;
                 instructions.extend_one(Low::PipelineLayout(descriptor));
@@ -1347,10 +1344,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
             let instructions = &mut self.instructions;
             let instruction_pointer = &mut self.instruction_pointer;
 
-            let descriptor = PipelineLayoutDescriptor {
-                bind_group_layouts,
-                push_constant_ranges: &[],
-            };
+            let descriptor = PipelineLayoutDescriptor { bind_group_layouts };
 
             *instruction_pointer += 1;
             instructions.extend_one(Low::PipelineLayout(descriptor));
@@ -1518,6 +1512,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
                     address_mode: desc.address_mode,
                     border_color: desc.border_color,
                     resize_filter: desc.resize_filter,
+                    mipmap_filter: desc.mipmap_filter,
                 }));
                 *sampler += 1;
                 sampler_id
@@ -1534,6 +1529,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
             address_mode: wgpu::AddressMode::default(),
             border_color: None,
             resize_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
         });
 
         let mut entries = vec![BindingResource::Sampler(sampler)];
@@ -1588,6 +1584,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
                 address_mode: wgpu::AddressMode::default(),
                 border_color: None,
                 resize_filter: wgpu::FilterMode::Nearest,
+                mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             });
 
             let view = self
@@ -1613,6 +1610,7 @@ impl<I: ExtendOne<Low>> Encoder<I> {
                 address_mode: wgpu::AddressMode::default(),
                 border_color: None,
                 resize_filter: wgpu::FilterMode::Nearest,
+                mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             });
 
             sparse.push((34, BindingResource::Sampler(sampler)));

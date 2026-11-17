@@ -2061,11 +2061,6 @@ impl WithBuffer<'_> {
 
 /// Turn a command buffer into a `Program`.
 impl Linker {
-    #[cfg(test)]
-    pub fn from_included() -> &'static Self {
-        zosimos_std::from_included()
-    }
-
     pub fn compile(&self, program: &CommandBuffer) -> Result<Program, CompileError> {
         self.link(program, &[], &[], &[])
     }
@@ -3655,44 +3650,4 @@ fn rectangles() {
     assert_eq!(small, large.meet(small));
     assert!(large.contains(small));
     assert!(!small.contains(large));
-}
-
-#[test]
-fn simple_program() {
-    use crate::pool::Pool;
-
-    const BACKGROUND: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/input/background.png");
-    const FOREGROUND: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/input/foreground.png");
-
-    let mut pool = Pool::new();
-    let mut commands = CommandBuffer::default();
-
-    let background = image::open(BACKGROUND).expect("Background image opened");
-    let foreground = image::open(FOREGROUND).expect("Background image opened");
-    let expected = ByteLayout::from(&background);
-
-    let placement = Rectangle {
-        x: 0,
-        y: 0,
-        max_x: foreground.width(),
-        max_y: foreground.height(),
-    };
-
-    let background = pool.insert_srgb(&background);
-    let background = commands.input_from(background.into());
-
-    let foreground = pool.insert_srgb(&foreground);
-    let foreground = commands.input_from(foreground.into());
-
-    let result = commands
-        .inscribe(background, placement, foreground)
-        .expect("Valid to inscribe");
-    let (_, outformat) = commands.output(result).expect("Valid for output");
-
-    let linker = Linker::from_included();
-
-    let _ = linker
-        .compile(&commands)
-        .expect("Could build command buffer");
-    assert_eq!(outformat.as_concrete().map(|x| x.layout), Some(expected));
 }

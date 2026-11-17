@@ -786,12 +786,6 @@ impl Executable {
                 }
                 Low::DrawOnce { vertices: _ } => {}
                 Low::DrawIndexedZero { vertices: _ } => {}
-                Low::SetPushConstants {
-                    stages: _,
-                    offset: _,
-                    data: _,
-                } => {}
-
                 Low::RunTopCommand => {
                     let idx = queue;
                     let command = command_stack.pop().unwrap();
@@ -1675,7 +1669,7 @@ impl Host {
                     address_mode_w: desc.address_mode,
                     mag_filter: desc.resize_filter,
                     min_filter: desc.resize_filter,
-                    mipmap_filter: desc.resize_filter,
+                    mipmap_filter: desc.mipmap_filter,
                     lod_min_clamp: 0.0,
                     lod_max_clamp: 0.0,
                     compare: None,
@@ -2469,8 +2463,9 @@ impl Descriptors {
             label: None,
             color_attachments: buf,
             depth_stencil_attachment: None,
-            occlusion_query_set: None,
             timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
         })
     }
 
@@ -2483,6 +2478,7 @@ impl Descriptors {
                 .texture_views
                 .get(desc.texture_view)
                 .ok_or_else(|| StepError::InvalidInstruction(line!()))?,
+            depth_slice: None,
             resolve_target: None,
             ops: desc.ops,
         })
@@ -2522,7 +2518,7 @@ impl Descriptors {
             // Add to the list of vertex, tessellation control, tessellation
             // evaluation, geometry, and fragment shader built-ins:
             // highp int gl_ViewIndex;
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         })
     }
@@ -2545,7 +2541,7 @@ impl Descriptors {
         Ok(wgpu::PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: buf,
-            push_constant_ranges: desc.push_constant_ranges,
+            immediate_size: 0,
         })
     }
 
@@ -2720,13 +2716,6 @@ impl Machine {
                 }
                 &Low::DrawIndexedZero { vertices } => {
                     pass.draw_indexed(0..vertices, 0, 0..1);
-                }
-                &Low::SetPushConstants {
-                    stages,
-                    offset,
-                    ref data,
-                } => {
-                    pass.set_push_constants(stages, offset, data);
                 }
                 Low::EndRenderPass => return Ok(()),
                 inner => {

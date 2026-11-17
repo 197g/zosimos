@@ -55,16 +55,12 @@ fn check_input_zeros_as(descriptor: Descriptor, pool: &mut Pool, instance: &wgpu
         "Descriptor changed while writing to output, this is odd"
     );
 
-    let program = Linker::from_included()
+    let program = zosimos_std::from_included()
         .compile(&command)
         .expect("Valid full program");
 
     let adapter = program
-        .choose_adapter(
-            instance
-                .enumerate_adapters(wgpu::Backends::all())
-                .into_iter(),
-        )
+        .choose_adapter(instance.enumerate_adapters(wgpu::Backends::all()))
         .unwrap();
 
     let mut run = program

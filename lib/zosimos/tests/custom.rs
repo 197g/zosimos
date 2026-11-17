@@ -12,6 +12,8 @@ use self::util::{retire_with_one_image, run_once_with_output};
 const BACKGROUND: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/input/background.png");
 
 #[test]
+// Spirv build for dev is currently disabled while we rework this, so this shader does not exist.
+#[cfg(any())]
 fn mandelbrot() {
     struct Mandelbrot {
         scale: (f32, f32),
@@ -96,6 +98,8 @@ fn mandelbrot() {
 }
 
 #[test]
+// Spirv build for dev is currently disabled while we rework this, so this shader does not exist.
+#[cfg(any())]
 fn crt() {
     struct Crt {
         source: &'static [u8],
@@ -136,15 +140,6 @@ fn crt() {
 
     let _ = env_logger::try_init();
 
-    const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: ANY,
-        ..Default::default()
-    });
-
-    let adapter = Program::minimum_adapter(instance.enumerate_adapters(ANY).into_iter())
-        .expect("to get an adapter");
-
     let mut pool = Pool::new();
 
     let (bg_key, bg_descriptor) = {
@@ -152,9 +147,6 @@ fn crt() {
         let entry = pool.insert_srgb(&background);
         (entry.key(), entry.descriptor())
     };
-
-    pool.request_device(&adapter, Program::minimal_device_descriptor())
-        .expect("to get a device");
 
     // Actual program begins here.
     let target = image::DynamicImage::ImageRgba8(image::RgbaImage::new(2048, 2048));
@@ -186,6 +178,8 @@ fn crt() {
 }
 
 #[test]
+// Spirv build for dev is currently disabled while we rework this, so this shader does not exist.
+#[cfg(any())]
 fn flat_correction() {
     struct FlatField {
         source: &'static [u8],
@@ -221,15 +215,6 @@ fn flat_correction() {
 
     let _ = env_logger::try_init();
 
-    const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: ANY,
-        ..Default::default()
-    });
-
-    let adapter = Program::minimum_adapter(instance.enumerate_adapters(ANY).into_iter())
-        .expect("to get an adapter");
-
     let mut pool = Pool::new();
 
     let (bg_key, bg_descriptor) = {
@@ -242,9 +227,6 @@ fn flat_correction() {
         let flat = image::DynamicImage::ImageLuma8(image::GrayImage::new(512, 512));
         Descriptor::with_srgb_image(&flat)
     };
-
-    pool.request_device(&adapter, Program::minimal_device_descriptor())
-        .expect("to get a device");
 
     // We synthesize it here as noise with known amplitude. Realistically you want the parameters
     // to be a runtime-computed knob, i.e. supplied via some source buffer.

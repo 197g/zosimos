@@ -23,14 +23,6 @@ fn generic_palette() {
         ..Default::default()
     });
 
-    let adapter = Program::minimum_adapter(instance.enumerate_adapters(ANY).into_iter())
-        .expect("to get an adapter");
-
-    let mut pool = Pool::new();
-
-    pool.request_device(&adapter, Program::minimal_device_descriptor())
-        .expect("to get a device");
-
     let fixed_palette = (|| {
         let mut commands = CommandBuffer::default();
         let in_a = commands.generic(GenericDeclaration { bounds: &[] });
@@ -95,9 +87,18 @@ fn generic_palette() {
     })()
     .expect("build generic inner function sequence");
 
-    let plan = Linker::from_included()
+    let plan = zosimos_std::from_included()
         .link(&main, &[], &[fixed_palette], &[&[1], &[]])
         .expect("compile full function sequence");
+
+    let adapter = plan
+        .choose_adapter(instance.enumerate_adapters(ANY))
+        .expect("to get an adapter");
+
+    let mut pool = Pool::new();
+
+    pool.request_device(&adapter, Program::minimal_device_descriptor())
+        .expect("to get a device");
 
     let capabilities = Capabilities::from({
         let mut devices = pool.iter_devices();

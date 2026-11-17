@@ -65,7 +65,7 @@ pub fn run_once_with_output<T>(
     binds: impl IntoIterator<Item = (Register, PoolKey)>,
     output: impl FnOnce(&mut Retire) -> T,
 ) -> T {
-    let linker = Linker::from_included();
+    let linker = zosimos_std::from_included();
 
     let plan = linker
         .compile(&commands)

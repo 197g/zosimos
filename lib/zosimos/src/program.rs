@@ -449,11 +449,6 @@ pub(crate) enum Low {
     DrawIndexedZero {
         vertices: u32,
     },
-    SetPushConstants {
-        stages: wgpu::ShaderStages,
-        offset: u32,
-        data: Cow<'static, [u8]>,
-    },
 
     // Render execution commands.
     /// Run one command buffer previously created.
@@ -673,7 +668,6 @@ pub(crate) struct FragmentState {
 #[derive(Debug)]
 pub(crate) struct PipelineLayoutDescriptor {
     pub bind_group_layouts: Vec<usize>,
-    pub push_constant_ranges: &'static [wgpu::PushConstantRange],
 }
 
 /// For constructing a new buffer, of anonymous memory.
@@ -997,6 +991,7 @@ pub(crate) struct SamplerDescriptor {
     /// In all directions.
     pub address_mode: wgpu::AddressMode,
     pub resize_filter: wgpu::FilterMode,
+    pub mipmap_filter: wgpu::MipmapFilterMode,
     // TODO: evaluate if necessary or beneficial
     // compare: Option<wgpu::CompareFunction>,
     pub border_color: Option<wgpu::SamplerBorderColor>,
@@ -1176,11 +1171,12 @@ impl Program {
     /// Choose an applicable adapter from one of the presented ones.
     pub fn choose_adapter(
         &self,
-        from: impl Iterator<Item = wgpu::Adapter>,
+        from: impl std::future::Future<Output = Vec<wgpu::Adapter>>,
     ) -> Result<wgpu::Adapter, MismatchError> {
+        let adapters = run::block_on(Box::pin(from), None);
         // FIXME: no. We could derive 'trait bounds' on the system that are necessary for executing
         // the operations. If we can make sure these are purely additive.
-        Program::minimum_adapter(from)
+        Program::minimum_adapter(adapters.into_iter())
     }
 
     /// Select an adapter that fulfills the minimum requirements for running programs.
@@ -1262,11 +1258,8 @@ impl Program {
     pub fn minimal_device_descriptor() -> wgpu::DeviceDescriptor<'static> {
         wgpu::DeviceDescriptor {
             label: None,
-            required_features: if std::env::var("ZOSIMOS_PASSTHROUGH").is_err() {
-                wgpu::Features::empty()
-            } else {
-                wgpu::Features::SPIRV_SHADER_PASSTHROUGH
-            },
+            required_features: wgpu::Features::empty(),
+            experimental_features: wgpu::ExperimentalFeatures::disabled(),
             // Well, technically... We need the texture format.
             // But should be able to workaround most other restrictions.
             // FIXME: make the use of this configurable.
@@ -1688,7 +1681,6 @@ impl Program {
             | Low::SetVertexBuffer { .. }
             | Low::DrawOnce { .. }
             | Low::DrawIndexedZero { .. }
-            | Low::SetPushConstants { .. }
             | Low::RunTopCommand
             | Low::RunBotToTop(_)
             | Low::WriteImageToBuffer { .. }

@@ -25,8 +25,6 @@ fn knob_on_overlay() {
         ..Default::default()
     });
 
-    let adapter = Program::request_adapter(&instance).expect("to get an adapter");
-
     let background = image::open(BACKGROUND).expect("Background image opened");
     let foreground = image::open(FOREGROUND).expect("Background image opened");
 
@@ -40,9 +38,6 @@ fn knob_on_overlay() {
         let entry = pool.insert_srgb(&foreground);
         (entry.key(), entry.descriptor())
     };
-
-    pool.request_device(&adapter, Program::minimal_device_descriptor())
-        .expect("to get a device");
 
     run_bilinear(
         &mut pool,
@@ -128,9 +123,22 @@ fn run_bilinear(
     let (output_affine, _outformat) = commands.output(result_affine).expect("Valid for output");
 
     let executable = {
-        let plan = Linker::from_included()
+        let plan = zosimos_std::from_included()
             .compile(&commands)
             .expect("Could build command buffer");
+
+        const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: ANY,
+            ..Default::default()
+        });
+
+        let adapter = plan
+            .choose_adapter(instance.enumerate_adapters(ANY))
+            .expect("to get an adapter");
+
+        pool.request_device(&adapter, Program::minimal_device_descriptor())
+            .expect("to get a device");
 
         let capabilities = Capabilities::from({
             let mut devices = pool.iter_devices();

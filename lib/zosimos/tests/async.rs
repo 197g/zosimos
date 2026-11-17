@@ -14,15 +14,6 @@ const FOREGROUND: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/input/foreg
 async fn step_async() {
     env_logger::init();
 
-    const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: ANY,
-        ..Default::default()
-    });
-
-    let adapter = Program::minimum_adapter(instance.enumerate_adapters(ANY).into_iter())
-        .expect("to get an adapter");
-
     let mut pool = Pool::new();
 
     let background = image::open(BACKGROUND).expect("Background image opened");
@@ -37,9 +28,6 @@ async fn step_async() {
         let entry = pool.insert_srgb(&foreground);
         (entry.key(), entry.descriptor())
     };
-
-    pool.request_device(&adapter, Program::minimal_device_descriptor())
-        .expect("to get a device");
 
     run_affine(&mut pool, pool_foreground.clone(), pool_background.clone()).await;
 }
@@ -99,9 +87,22 @@ pub async fn run_once_with_output<T>(
     binds: impl IntoIterator<Item = (Register, PoolKey)>,
     output: impl FnOnce(&mut Retire) -> T,
 ) -> T {
-    let plan = Linker::from_included()
+    let plan = zosimos_std::from_included()
         .compile(&commands)
         .expect("Could build command buffer");
+
+    const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        backends: ANY,
+        ..Default::default()
+    });
+
+    let adapter = plan
+        .choose_adapter(instance.enumerate_adapters(ANY))
+        .expect("to get an adapter");
+
+    pool.request_device(&adapter, Program::minimal_device_descriptor())
+        .expect("to get a device");
 
     let capabilities = Capabilities::from({
         let mut devices = pool.iter_devices();

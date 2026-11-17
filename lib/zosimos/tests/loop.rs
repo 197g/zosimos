@@ -17,15 +17,6 @@ const FOREGROUND: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/input/foreg
 fn integration() {
     env_logger::init();
 
-    const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: ANY,
-        ..Default::default()
-    });
-
-    let adapter = Program::minimum_adapter(instance.enumerate_adapters(ANY).into_iter())
-        .expect("to get an adapter");
-
     let background = image::open(BACKGROUND).expect("Background image opened");
     let foreground = image::open(FOREGROUND).expect("Background image opened");
 
@@ -39,9 +30,6 @@ fn integration() {
         let entry = pool.insert_srgb(&foreground);
         (entry.key(), entry.descriptor())
     };
-
-    pool.request_device(&adapter, Program::minimal_device_descriptor())
-        .expect("to get a device");
 
     /* This is the familiar simple inscribe placement
      */
@@ -68,9 +56,22 @@ fn integration() {
 
     let (output, _outformat) = commands.output(result).expect("Valid for output");
 
-    let plan = Linker::from_included()
+    let plan = zosimos_std::from_included()
         .compile(&commands)
         .expect("Could build command buffer");
+
+    const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        backends: ANY,
+        ..Default::default()
+    });
+
+    let adapter = plan
+        .choose_adapter(instance.enumerate_adapters(ANY))
+        .expect("to get an adapter");
+
+    pool.request_device(&adapter, Program::minimal_device_descriptor())
+        .expect("to get a device");
 
     let capabilities = Capabilities::from({
         let mut devices = pool.iter_devices();
