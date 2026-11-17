@@ -1149,6 +1149,10 @@ impl Program {
             power_preference: wgpu::PowerPreference::HighPerformance,
             force_fallback_adapter: false,
             compatible_surface: None,
+            // Let's set this on Wasm32 as a proxy to web. Should be okay for now? And it should
+            // make everything more consistent across machines if I understand the documentation
+            // correctly.
+            apply_limit_buckets: cfg!(target_arch = "wasm32"),
         });
 
         let choice = run::block_on(Box::pin(request), None);

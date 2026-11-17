@@ -22,9 +22,9 @@ fn test_descriptor_as_gpu_texture() {
     let mut pool = Pool::new();
 
     const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: ANY,
-        ..Default::default()
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
     });
 
     let descriptors: &[Descriptor] = &[
