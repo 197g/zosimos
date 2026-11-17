@@ -76,7 +76,9 @@ fn asset_to_url(asset: &Asset) -> Result<url::Url, BoxedError> {
     let mut path = asset.resolve();
 
     if asset.bundled().bundled_path().contains("placeholder") {
-        tracing::error!("If you see this in development, your `dx` version may not match your dioxus version");
+        tracing::error!(
+            "If you see this in development, your `dx` version may not match your dioxus version"
+        );
 
         tracing::warn!(
             "Bad linked asset {} {} (bundled: {}, absolute: {})",

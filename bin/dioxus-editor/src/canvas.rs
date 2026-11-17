@@ -1,7 +1,7 @@
 use dioxus::prelude::*;
 use web_sys::wasm_bindgen::JsCast as _;
 
-use crate::{compute, linker, surface, BoxedError};
+use crate::{BoxedError, compute, linker, surface};
 
 pub fn Editor() -> Element {
     let next_frame = use_hook(|| std::sync::Arc::<surface::NextFrameInformation>::default());

@@ -1,9 +1,8 @@
 use dioxus::prelude::*;
 use zosimos::command::Linker;
 
-    #[used]
-    pub static STD: Asset = asset!("/assets/std.cbor");
-
+#[used]
+pub static STD: Asset = asset!("/assets/std.cbor");
 
 pub async fn from_assets() -> Result<Linker, Box<dyn std::error::Error>> {
     tracing::info!("Getting shader assets");
