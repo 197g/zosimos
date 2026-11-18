@@ -367,6 +367,22 @@ impl Pool {
         Ok(())
     }
 
+    pub fn present(
+        &self,
+        GpuKey(key): GpuKey,
+        surface: wgpu::SurfaceTexture,
+    ) -> Result<(), ImageUploadError> {
+        let device = match self.devices.get(key) {
+            None => {
+                return Err(ImageUploadError::BadGpu);
+            }
+            Some(device) => device.clone(),
+        };
+
+        device.queue().present(surface);
+        Ok(())
+    }
+
     pub(crate) fn insert_cacheable_texture(
         &mut self,
         desc: &TextureDescriptor,

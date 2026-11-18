@@ -130,7 +130,7 @@ async fn run_surface(
         tracing::info!("Tick {frame_idx}");
         notify.notified().await;
 
-        let mut texture = match surface.get_current_texture() {
+        let texture = match surface.get_current_texture() {
             Err(e) => {
                 tracing::error!("{e:?}");
                 continue;
@@ -139,10 +139,8 @@ async fn run_surface(
         };
 
         tracing::trace!("Rendering presentation frame");
-        surface.present_to_texture(&mut texture).await;
+        surface.present_to_texture(texture).await;
 
-        tracing::trace!("Presenting frame");
-        texture.present();
         on_render_cb();
     }
 }
