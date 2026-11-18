@@ -1,5 +1,5 @@
 [workspace]
-members = ["bin/dioxus-editor", "bin/sh", "lib/lang", "lib/std", "lib/zosimos"]
+members = ["bin/dioxus-editor", "bin/sh", "lib/lang", "lib/magick-compat", "lib/std", "lib/zosimos"]
 resolver = "3"
 
 [workspace.dependencies.image]
@@ -22,7 +22,7 @@ version = "0.1.3"
 version = "0.3.77"
 features = ["HtmlCanvasElement"]
 [workspace.dependencies.wgpu]
-version = "25.0"
+version = "30.0"
 default-features = false
 
 [workspace.dependencies.zosimos]

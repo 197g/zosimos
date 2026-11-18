@@ -338,9 +338,9 @@ impl Pool {
                 buffer.unmap();
             }
             ImageData::Host(canvas) => {
-                let mut slice = buffer.slice(..).get_mapped_range_mut();
+                let mut slice = buffer.slice(..).get_mapped_range_mut().unwrap();
                 let layout = image.descriptor.to_canvas();
-                copy_host_to_buffer(canvas.as_bytes(), &mut slice, &layout, aligned);
+                copy_host_to_buffer(canvas.as_bytes(), slice.slice(..), &layout, aligned);
 
                 drop(slice);
                 buffer.unmap();
@@ -364,6 +364,22 @@ impl Pool {
         let device = self.devices.get_mut(key).unwrap();
         let _ = mem::replace(device, gpu);
 
+        Ok(())
+    }
+
+    pub fn present(
+        &self,
+        GpuKey(key): GpuKey,
+        surface: wgpu::SurfaceTexture,
+    ) -> Result<(), ImageUploadError> {
+        let device = match self.devices.get(key) {
+            None => {
+                return Err(ImageUploadError::BadGpu);
+            }
+            Some(device) => device.clone(),
+        };
+
+        device.queue().present(surface);
         Ok(())
     }
 

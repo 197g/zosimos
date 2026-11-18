@@ -41,14 +41,12 @@ struct Window {
 #[derive(Debug)]
 pub enum PresentationError {
     GpuDeviceLost,
-    Surface(wgpu::SurfaceError),
 }
 
 impl core::fmt::Display for PresentationError {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             PresentationError::GpuDeviceLost => write!(f, "Gpu device was lost"),
-            PresentationError::Surface(e) => write!(f, "Gpu surface error: {e:?}"),
         }
     }
 }
@@ -90,9 +88,9 @@ impl Surface {
         canvas: web_sys::HtmlCanvasElement,
         linker: command::Linker,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
-            ..Default::default()
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
 
         tracing::info!("Found instance from descriptor");
@@ -105,6 +103,7 @@ impl Surface {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
+                apply_limit_buckets: true,
             },
         )?;
 
@@ -166,6 +165,7 @@ impl Surface {
             view_formats: [preferred_format].to_vec(),
             alpha_mode: Default::default(),
             desired_maximum_frame_latency: 0,
+            color_space: wgpu::SurfaceColorSpace::Srgb,
         };
 
         let descriptor = Descriptor {
@@ -248,8 +248,8 @@ impl Surface {
         } else {
             tracing::info!("No gpu key, device lost or not initialized?");
             let mut descriptor = Program::minimal_device_descriptor();
-            descriptor.required_limits.max_texture_dimension_1d = 4096;
-            descriptor.required_limits.max_texture_dimension_2d = 4096;
+            descriptor.required_limits.max_texture_dimension_1d = 2048;
+            descriptor.required_limits.max_texture_dimension_2d = 2048;
 
             let gpu = self
                 .pool
@@ -276,37 +276,39 @@ impl Surface {
     }
 
     pub fn get_current_texture(&mut self) -> Result<wgpu::SurfaceTexture, PresentationError> {
-        let texture = self
-            .window
-            .surface
-            .get_current_texture()
-            .map_err(PresentationError::Surface)?;
-
-        let recreate = texture.suboptimal
-            || self
-                .next_frame
-                .recreate
-                .swap(false, std::sync::atomic::Ordering::Relaxed);
-
-        if !recreate {
-            return Ok(texture);
+        if self
+            .next_frame
+            .recreate
+            .swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            self.outdated()?;
         }
 
-        tracing::warn!(
-            "Recreating drawing surface. Due to suboptimal: {:?}",
-            texture.suboptimal
-        );
+        let texture = self.window.surface.get_current_texture();
 
-        drop(texture);
-        self.outdated()?;
-
-        self.window
-            .surface
-            .get_current_texture()
-            .map_err(PresentationError::Surface)
+        match texture {
+            wgpu::CurrentSurfaceTexture::Success(texture) => {
+                return Ok(texture);
+            }
+            wgpu::CurrentSurfaceTexture::Suboptimal(_)
+            | wgpu::CurrentSurfaceTexture::Lost
+            | wgpu::CurrentSurfaceTexture::Outdated => {
+                tracing::warn!("Recreating drawing surface. Due to suboptimal",);
+                self.next_frame
+                    .recreate
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                return Err(PresentationError::GpuDeviceLost);
+            }
+            wgpu::CurrentSurfaceTexture::Validation
+            | wgpu::CurrentSurfaceTexture::Timeout
+            | wgpu::CurrentSurfaceTexture::Occluded => {
+                tracing::warn!("Timeout while acquiring surface texture. Skipping frame.");
+                return Err(PresentationError::GpuDeviceLost);
+            }
+        }
     }
 
-    pub async fn present_to_texture(&mut self, surface_tex: &mut wgpu::SurfaceTexture) {
+    pub async fn present_to_texture(&mut self, mut surface_tex: wgpu::SurfaceTexture) {
         let gpu = match self.entry.gpu {
             Some(key) => key,
             None => {
@@ -391,6 +393,7 @@ impl Surface {
 
         tracing::warn!("{:?}", running.resources_used());
         let mut retire = running.retire_gracefully(&mut self.pool);
+
         retire
             .input(in_reg)
             .expect("Valid to retire input of our executable");
@@ -407,6 +410,8 @@ impl Surface {
             .entry(surface)
             .unwrap()
             .replace_texture_unguarded(&mut surface_tex.texture, gpu);
+
+        self.pool.present(gpu, surface_tex);
     }
 
     pub fn descriptor(&self) -> Descriptor {

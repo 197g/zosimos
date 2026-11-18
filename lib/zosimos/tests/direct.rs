@@ -1,4 +1,6 @@
 //! This test ensures that the direct `Program::launch` interface can be used.
+use std::future::Future;
+
 use zosimos::buffer::Descriptor;
 use zosimos::command::{CommandBuffer, Linker, Rectangle};
 use zosimos::pool::{Pool, PoolKey};
@@ -14,9 +16,9 @@ fn standard() {
     env_logger::init();
 
     const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: ANY,
-        ..Default::default()
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
     });
 
     let background = image::open(BACKGROUND).expect("Background image opened");
@@ -35,7 +37,7 @@ fn standard() {
 
     run_blending(
         &mut pool,
-        instance.enumerate_adapters(ANY).into_iter(),
+        instance.enumerate_adapters(ANY),
         pool_foreground,
         pool_background,
     );
@@ -43,7 +45,7 @@ fn standard() {
 
 fn run_blending(
     pool: &mut Pool,
-    adapters: impl Iterator<Item = wgpu::Adapter>,
+    adapters: impl Future<Output = Vec<wgpu::Adapter>>,
     (fg_key, foreground): (PoolKey, Descriptor),
     (bg_key, background): (PoolKey, Descriptor),
 ) {
@@ -70,7 +72,7 @@ fn run_blending(
 
     let (output, _outformat) = commands.output(result).expect("Valid for output");
 
-    let plan = Linker::from_included()
+    let plan = zosimos_std::from_included()
         .compile(&commands)
         .expect("Could build command buffer");
 

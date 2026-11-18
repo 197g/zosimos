@@ -786,12 +786,6 @@ impl Executable {
                 }
                 Low::DrawOnce { vertices: _ } => {}
                 Low::DrawIndexedZero { vertices: _ } => {}
-                Low::SetPushConstants {
-                    stages: _,
-                    offset: _,
-                    data: _,
-                } => {}
-
                 Low::RunTopCommand => {
                     let idx = queue;
                     let command = command_stack.pop().unwrap();
@@ -1675,7 +1669,7 @@ impl Host {
                     address_mode_w: desc.address_mode,
                     mag_filter: desc.resize_filter,
                     min_filter: desc.resize_filter,
-                    mipmap_filter: desc.resize_filter,
+                    mipmap_filter: desc.mipmap_filter,
                     lod_min_clamp: 0.0,
                     lod_max_clamp: 0.0,
                     compare: None,
@@ -2027,12 +2021,11 @@ impl Host {
                 ping.await
                     .map_err(|wgpu::BufferAsyncError| StepError::InvalidInstruction(line!()))?;
 
-                let mut data = slice.get_mapped_range_mut();
+                let mut data = slice.get_mapped_range_mut().unwrap();
 
                 // We've checked that this image can be seen as host bytes.
                 let source: &[u8] = image.as_bytes().unwrap();
-                let target: &mut [u8] = &mut data[..];
-                copy_host_to_buffer(source, target, image.layout(), *target_layout);
+                copy_host_to_buffer(source, data.slice(..), image.layout(), *target_layout);
 
                 drop(data);
                 buffer.unmap();
@@ -2253,7 +2246,7 @@ impl Host {
                 ping.await
                     .map_err(|wgpu::BufferAsyncError| StepError::InvalidInstruction(line!()))?;
 
-                let data = slice.get_mapped_range();
+                let data = slice.get_mapped_range().unwrap();
 
                 // TODO: defensive programming, don't assume cast works.
                 let source_pitch = bytes_per_row as usize;
@@ -2469,8 +2462,9 @@ impl Descriptors {
             label: None,
             color_attachments: buf,
             depth_stencil_attachment: None,
-            occlusion_query_set: None,
             timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
         })
     }
 
@@ -2483,6 +2477,7 @@ impl Descriptors {
                 .texture_views
                 .get(desc.texture_view)
                 .ok_or_else(|| StepError::InvalidInstruction(line!()))?,
+            depth_slice: None,
             resolve_target: None,
             ops: desc.ops,
         })
@@ -2491,7 +2486,7 @@ impl Descriptors {
     fn pipeline<'set>(
         &'set self,
         desc: &program::RenderPipelineDescriptor,
-        vertex_buffers: &'set mut Vec<wgpu::VertexBufferLayout<'set>>,
+        vertex_buffers: &'set mut Vec<Option<wgpu::VertexBufferLayout<'set>>>,
         fragments: &'set mut Vec<Option<wgpu::ColorTargetState>>,
     ) -> Result<wgpu::RenderPipelineDescriptor<'set>, StepError> {
         Ok(wgpu::RenderPipelineDescriptor {
@@ -2522,7 +2517,7 @@ impl Descriptors {
             // Add to the list of vertex, tessellation control, tessellation
             // evaluation, geometry, and fragment shader built-ins:
             // highp int gl_ViewIndex;
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         })
     }
@@ -2530,7 +2525,7 @@ impl Descriptors {
     fn pipeline_layout<'set>(
         &'set self,
         desc: &program::PipelineLayoutDescriptor,
-        buf: &'set mut Vec<&'set wgpu::BindGroupLayout>,
+        buf: &'set mut Vec<Option<&'set wgpu::BindGroupLayout>>,
     ) -> Result<wgpu::PipelineLayoutDescriptor<'set>, StepError> {
         buf.clear();
 
@@ -2539,23 +2534,23 @@ impl Descriptors {
                 .bind_group_layouts
                 .get(layout)
                 .ok_or_else(|| StepError::InvalidInstruction(line!()))?;
-            buf.push(group);
+            buf.push(Some(group));
         }
 
         Ok(wgpu::PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: buf,
-            push_constant_ranges: desc.push_constant_ranges,
+            immediate_size: 0,
         })
     }
 
     fn vertex_state<'set>(
         &'set self,
         desc: &program::VertexState,
-        buf: &'set mut Vec<wgpu::VertexBufferLayout<'set>>,
+        buf: &'set mut Vec<Option<wgpu::VertexBufferLayout<'set>>>,
     ) -> Result<wgpu::VertexState<'set>, StepError> {
         buf.clear();
-        buf.push(wgpu::VertexBufferLayout {
+        buf.push(Some(wgpu::VertexBufferLayout {
             array_stride: 8,
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &[wgpu::VertexAttribute {
@@ -2563,7 +2558,7 @@ impl Descriptors {
                 offset: 0,
                 shader_location: 0,
             }],
-        });
+        }));
         Ok(wgpu::VertexState {
             module: self
                 .shaders
@@ -2720,13 +2715,6 @@ impl Machine {
                 }
                 &Low::DrawIndexedZero { vertices } => {
                     pass.draw_indexed(0..vertices, 0, 0..1);
-                }
-                &Low::SetPushConstants {
-                    stages,
-                    offset,
-                    ref data,
-                } => {
-                    pass.set_push_constants(stages, offset, data);
                 }
                 Low::EndRenderPass => return Ok(()),
                 inner => {
@@ -3281,7 +3269,7 @@ where
 
 pub(crate) fn copy_host_to_buffer(
     source: &[u8],
-    target: &mut [u8],
+    mut target: wgpu::WriteOnly<[u8]>,
     source_layout: &CanvasLayout,
     target_layout: ByteLayout,
 ) {
@@ -3301,10 +3289,13 @@ pub(crate) fn copy_host_to_buffer(
         debug_assert!(source[source_line..].len() >= source_pitch);
         let source_row = &source[source_line..][..source_pitch];
         let target_line = x as usize * target_pitch;
-        debug_assert!(target.get(target_line..).is_some());
-        debug_assert!(target[target_line..].len() >= target_pitch);
-        let target_row = &mut target[target_line..][..target_pitch];
-        target_row[..bytes_to_copy].copy_from_slice(&source_row[..bytes_to_copy]);
+        debug_assert!(bytes_to_copy <= target_pitch);
+
+        target
+            .slice(target_line..)
+            .slice(..target_pitch)
+            .slice(..bytes_to_copy)
+            .copy_from_slice(&source_row[..bytes_to_copy]);
     }
 }
 

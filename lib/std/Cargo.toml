@@ -7,4 +7,4 @@ edition = "2024"
 zosimos.workspace = true
 
 [build-dependencies]
-shaderc = "0.8"
+shaderc = "0.10"

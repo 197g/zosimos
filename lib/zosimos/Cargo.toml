@@ -63,3 +63,6 @@ name = "blend"
 
 [[test]]
 name = "direct"
+
+[[test]]
+name = "simple_program"

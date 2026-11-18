@@ -17,9 +17,9 @@ fn buffer_interop() {
     env_logger::init();
 
     const ANY: wgpu::Backends = wgpu::Backends::VULKAN;
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: ANY,
-        ..Default::default()
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
     });
 
     let adapter = Program::request_adapter(&instance).expect("to get an adapter");
@@ -82,7 +82,7 @@ fn run_from_buffer_knob(pool: &mut Pool) {
     let (output, _outformat) = commands.output(result).expect("Valid for output");
 
     let executable = {
-        let plan = Linker::from_included()
+        let plan = zosimos_std::from_included()
             .compile(&commands)
             .expect("Could build command buffer");
 
