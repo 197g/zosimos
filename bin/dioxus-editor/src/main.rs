@@ -73,7 +73,7 @@ fn asset_to_url(asset: &Asset) -> Result<url::Url, BoxedError> {
     // That is a problem with a mismatched `dx` but we can degrade gracefully.
     let mut base: url::Url = base.clone();
 
-    let mut path = asset.resolve();
+    let mut path = asset.to_string();
 
     if asset.bundled().bundled_path().contains("placeholder") {
         tracing::error!(
@@ -83,7 +83,7 @@ fn asset_to_url(asset: &Asset) -> Result<url::Url, BoxedError> {
         tracing::warn!(
             "Bad linked asset {} {} (bundled: {}, absolute: {})",
             base,
-            path.display(),
+            path,
             asset.bundled().bundled_path(),
             asset.bundled().absolute_source_path(),
         );
@@ -100,13 +100,17 @@ fn asset_to_url(asset: &Asset) -> Result<url::Url, BoxedError> {
 
     base.path_segments_mut()
         .unwrap()
-        .extend(path.components().filter_map(|seg| match seg {
-            std::path::Component::Prefix(_)
-            | std::path::Component::RootDir
-            | std::path::Component::CurDir
-            | std::path::Component::ParentDir => None,
-            std::path::Component::Normal(os_str) => os_str.to_str(),
-        }));
+        .extend(
+            std::path::Path::new(&path)
+                .components()
+                .filter_map(|seg| match seg {
+                    std::path::Component::Prefix(_)
+                    | std::path::Component::RootDir
+                    | std::path::Component::CurDir
+                    | std::path::Component::ParentDir => None,
+                    std::path::Component::Normal(os_str) => os_str.to_str(),
+                }),
+        );
 
     Ok(base)
 }

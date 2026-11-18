@@ -298,7 +298,6 @@ impl Surface {
                     .recreate
                     .store(true, std::sync::atomic::Ordering::Relaxed);
                 return Err(PresentationError::GpuDeviceLost);
-
             }
             wgpu::CurrentSurfaceTexture::Validation
             | wgpu::CurrentSurfaceTexture::Timeout

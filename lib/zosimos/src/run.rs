@@ -3289,7 +3289,7 @@ pub(crate) fn copy_host_to_buffer(
         debug_assert!(source[source_line..].len() >= source_pitch);
         let source_row = &source[source_line..][..source_pitch];
         let target_line = x as usize * target_pitch;
-        debug_assert!(target_line >= target_pitch);
+        debug_assert!(bytes_to_copy <= target_pitch);
 
         target
             .slice(target_line..)
