@@ -1,6 +1,21 @@
 [workspace]
-members = ["bin/dioxus-editor", "bin/sh", "lib/lang", "lib/magick-compat", "lib/std", "lib/zosimos"]
+members = [
+    "bin/dioxus-editor",
+    "bin/sh",
+
+    "lib/lang",
+    "lib/magick-compat",
+    "lib/std",
+    "lib/zosimos"
+]
+
 resolver = "3"
+
+[workspace.dependencies]
+zosimos = { path = "lib/zosimos" }
+zosimos-lang = { path = "lib/lang" }
+zosimos-magick-compat = { path = "lib/magick-compat" }
+zosimos-std = { path = "lib/std" }
 
 [workspace.dependencies.image]
 version = "0.25.6"
@@ -24,13 +39,6 @@ features = ["HtmlCanvasElement"]
 [workspace.dependencies.wgpu]
 version = "30.0"
 default-features = false
-
-[workspace.dependencies.zosimos]
-path = "lib/zosimos"
-[workspace.dependencies.zosimos-lang]
-path = "lib/lang"
-[workspace.dependencies.zosimos-std]
-path = "lib/std"
 
 [profile]
 

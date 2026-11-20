@@ -1,5 +1,6 @@
 use std::ffi::OsStr;
 
+#[cfg(feature = "pic-scale-safe")]
 use pic_scale_safe::ResamplingFunction;
 
 use crate::arg_parse_err::ArgParseErr;
@@ -53,6 +54,7 @@ impl TryFrom<&OsStr> for Filter {
     }
 }
 
+#[cfg(feature = "pic-scale-safe")]
 impl From<Filter> for ResamplingFunction {
     fn from(value: Filter) -> ResamplingFunction {
         match value {

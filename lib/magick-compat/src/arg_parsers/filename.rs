@@ -14,9 +14,7 @@ use std::os::windows::ffi::OsStrExt;
 #[cfg(windows)]
 use std::os::windows::ffi::OsStringExt;
 
-use image::ImageFormat;
-
-use crate::{arg_parse_err::ArgParseErr, error::MagickError, wm_err};
+use crate::{arg_parse_err::ArgParseErr, error::MagickError, image::ImageFormat, wm_err};
 
 use super::{Geometry, ResizeGeometry};
 
@@ -59,7 +57,7 @@ impl FileFormat {
         let format = if lowercase_prefix == "null" {
             Self::IgnoreFile
         } else {
-            Self::Format(ImageFormat::from_extension(lowercase_prefix)?)
+            Self::Format(ImageFormat::from_extension(OsStr::new(&lowercase_prefix))?)
         };
         Some(format)
     }
@@ -433,8 +431,6 @@ pub fn parse_path_and_format(input: &OsStr) -> Option<(OsString, FileFormat)> {
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
-
-    use image::ImageFormat;
 
     use super::*;
 

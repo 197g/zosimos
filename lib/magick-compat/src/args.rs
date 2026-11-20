@@ -180,7 +180,18 @@ impl ArgParseCtx {
     }
 }
 
-pub fn parse_args(mut args: Vec<OsString>) -> Result<ExecutionPlan, MagickError> {
+/// Parse arguments in their command-line form into a sequenced 'plan'.
+///
+/// FIXME: Determine if we want the planner or this method to be responsible for keeping track of
+/// image slots in the pipeline. It is mostly a dynamic property, as inputs can coerce into
+/// sequences and thus splat into the image stack. From our perspective this may be problematic.
+/// Instead the [`ArgParseCtx`] could have configuration flags that determine some automatic
+/// conversion here, i.e. disabling implied sequence parsing and requiring explicit annotations on
+/// the input / output file arguments (or `-write` calls).
+pub fn parse_args(
+    mut args: Vec<OsString>,
+    ctx: &mut ArgParseCtx,
+) -> Result<ExecutionPlan, MagickError> {
     // TODO: whole lotta stuff: https://imagemagick.org/script/command-line-processing.php
 
     // maybe_print_help should take care of it, but this won't hurt
@@ -200,7 +211,6 @@ pub fn parse_args(mut args: Vec<OsString>) -> Result<ExecutionPlan, MagickError>
         ));
     }
 
-    let ctx = ArgParseCtx::with_file_system();
     let mut plan = ExecutionPlan::default();
     plan.set_output_file(&output_filename, &ctx);
 
@@ -223,6 +233,7 @@ pub fn parse_args(mut args: Vec<OsString>) -> Result<ExecutionPlan, MagickError>
             plan.add_input_file(InputFileArg::parse(&raw_arg)?);
         }
     }
+
     Ok(plan)
 }
 
@@ -260,7 +271,7 @@ impl core::fmt::Debug for ExistsFn {
 mod tests {
     use super::*;
 
-    use image::ImageFormat;
+    use crate::image::ImageFormat;
     use std::path::PathBuf;
 
     #[test]

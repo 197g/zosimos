@@ -1,7 +1,5 @@
 use std::{ffi::OsStr, fmt::Display, str::FromStr};
 
-use image::{metadata::Cicp, ColorType};
-
 use crate::arg_parse_err::ArgParseErr;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -10,6 +8,16 @@ pub struct Colorspace {
     /// Corresponds to a ColorType in the image crate. Note that the depth is not actually encoded
     /// in the argument so you should adapt this with the setting `-depth`.
     pub color: ColorModel,
+}
+
+// FIXME: use a crate for this, again. Previously this linked against the whole `image` crate which
+// is undesirable. We may move things to `image-core`, including the Cicp model, or this might use a
+// more appropriate 4-byte Cicp struct from `image-canvas`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Cicp {
+    Srgb,
+    SrgbLinear,
+    DisplayP3,
 }
 
 impl Display for Colorspace {
@@ -36,23 +44,23 @@ impl FromStr for Colorspace {
         // <https://imagemagick.org/script/command-line-options.php#colorspace>
         match s.to_lowercase().as_str() {
             "srgb" => Ok(Colorspace {
-                cicp: Cicp::SRGB,
+                cicp: Cicp::Srgb,
                 color: ColorModel::Rgb,
             }),
             "displayp3" => Ok(Colorspace {
-                cicp: Cicp::DISPLAY_P3,
+                cicp: Cicp::DisplayP3,
                 color: ColorModel::Rgb,
             }),
             "rgb" => Ok(Colorspace {
-                cicp: Cicp::SRGB_LINEAR,
+                cicp: Cicp::SrgbLinear,
                 color: ColorModel::Luma,
             }),
             "gray" => Ok(Colorspace {
-                cicp: Cicp::SRGB,
+                cicp: Cicp::Srgb,
                 color: ColorModel::Luma,
             }),
             "lineargray" => Ok(Colorspace {
-                cicp: Cicp::SRGB_LINEAR,
+                cicp: Cicp::SrgbLinear,
                 color: ColorModel::Luma,
             }),
             _ => Err(ArgParseErr::with_msg(format!(
@@ -75,15 +83,4 @@ pub enum ChannelFormat {
     U8,
     #[expect(dead_code, reason = "-depth option introduced in future commits")]
     U16,
-}
-
-impl ColorModel {
-    pub fn with_channel_format(&self, depth: ChannelFormat) -> ColorType {
-        match (self, depth) {
-            (ColorModel::Luma, ChannelFormat::U8) => ColorType::L8,
-            (ColorModel::Luma, ChannelFormat::U16) => ColorType::L16,
-            (ColorModel::Rgb, ChannelFormat::U8) => ColorType::Rgb8,
-            (ColorModel::Rgb, ChannelFormat::U16) => ColorType::Rgb16,
-        }
-    }
 }
