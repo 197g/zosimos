@@ -2564,6 +2564,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "magick-script"
+version = "0.0.0"
+dependencies = [
+ "image-canvas",
+ "pic-scale-safe",
+ "strum",
+]
+
+[[package]]
 name = "manganis"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5562,11 +5571,10 @@ dependencies = [
 
 [[package]]
 name = "zosimos-magick-compat"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
- "image-canvas",
- "pic-scale-safe",
- "strum",
+ "magick-script",
+ "zosimos",
 ]
 
 [[package]]

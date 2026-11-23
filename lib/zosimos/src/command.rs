@@ -60,7 +60,7 @@ pub struct Linker {
 #[derive(Default)]
 pub struct CommandBuffer {
     ops: Vec<Op>,
-    vars: Vec<TyVarBounds>,
+    vars: Vec<TyVarDef>,
     symbols: Vec<CommandSignature>,
     tys: Vec<GenericDescriptor>,
     /// Commands that consume a statically initialized buffer, which we can adjust at launch time.
@@ -72,6 +72,11 @@ pub struct CommandBuffer {
 pub struct GenericVar(pub(crate) usize);
 
 /// Refers to the descriptor introduced by a generic argument or a derived var.
+///
+/// A generative type of some runtime texture, potentially qualified by some static bounds, behaves
+/// very similar to a generic; except that it is not passed or determined at a call site. As such
+/// its appearance in a signature (as part of output typing) introduces a fresh generative type
+/// instead.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct DescriptorVar(pub(crate) usize);
 
@@ -79,8 +84,9 @@ pub struct DescriptorVar(pub(crate) usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct FunctionVar(pub(crate) usize);
 
+#[derive(Clone, Debug)]
 pub struct CommandSignature {
-    vars: Vec<TyVarBounds>,
+    vars: Vec<TyVarDef>,
     input: Vec<GenericDescriptor>,
     output: Vec<GenericDescriptor>,
 }
@@ -116,6 +122,13 @@ pub enum RegisterDescription<'cmd> {
     Texture(&'cmd GenericDescriptor),
     /// This register is a byte-based buffer.
     Buffer(&'cmd GenericBuffer),
+    /// This register is a list.
+    ///
+    /// Lists are heterogeneous ordered collections of registers.
+    List(&'cmd [GenericBound]),
+    Function {
+        signature: &'cmd CommandSignature,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -166,6 +179,13 @@ enum Op {
         results: Vec<Register>,
         generics: Vec<GenericDescriptor>,
     },
+    Function {
+        function: FunctionVar,
+        generics: Vec<GenericDescriptor>,
+        /// The computed signature, from substituting all generics with proper types (at least
+        /// proper in the current context).
+        signature: CommandSignature,
+    },
     /// The specific return value of a function.
     InvokedResult {
         /// Where is this register initialized? Must be after its definition.
@@ -198,12 +218,20 @@ enum KnobKind {
     },
 }
 
-#[derive(Clone)]
-struct TyVarBounds {}
+#[derive(Clone, Debug)]
+struct TyVarDef {
+    dynamic: bool,
+}
 
 /// Declare a fresh generic declaration parameter.
 pub struct GenericDeclaration<'lt> {
     pub bounds: &'lt [GenericBound],
+}
+
+impl GenericDeclaration<'_> {
+    pub fn empty() -> Self {
+        GenericDeclaration { bounds: &[] }
+    }
 }
 
 /// Declare a new descriptor type based on a generic bound.
@@ -770,7 +798,29 @@ impl CommandBuffer {
             match *item {}
         }
 
-        let bounds = TyVarBounds {};
+        let bounds = TyVarDef { dynamic: false };
+        let tyvar = GenericVar(self.vars.len());
+        self.vars.push(bounds);
+
+        let descriptor = DescriptorVar(self.tys.len());
+        self.tys.push(GenericDescriptor {
+            size: Generic::Generic(tyvar),
+            chroma: Generic::Generic(tyvar),
+        });
+
+        descriptor
+    }
+
+    /// Declare a generic parameter.
+    ///
+    /// All generic parameters need to be filled with matching concrete variables when the function
+    /// is instantiated at a later point.
+    pub fn generative(&mut self, generic: GenericDeclaration) -> DescriptorVar {
+        for item in generic.bounds {
+            match *item {}
+        }
+
+        let bounds = TyVarDef { dynamic: true };
         let tyvar = GenericVar(self.vars.len());
         self.vars.push(bounds);
 
@@ -859,6 +909,55 @@ impl CommandBuffer {
         Ok(symbol)
     }
 
+    /// Instantiate a function.
+    ///
+    /// This makes it monomorphic in the current context at least.
+    #[doc(alias = "function pointer")]
+    #[doc(alias = "fnptr")]
+    pub fn function_value(
+        &mut self,
+        function: FunctionVar,
+        generics: &[DescriptorVar],
+    ) -> Result<Register, CommandError> {
+        let signature = self
+            .symbols
+            .get(function.0)
+            .ok_or(CommandError::BAD_REGISTER)?;
+
+        if signature.vars.len() != generics.len() {
+            return Err(CommandError::INVALID_CALL);
+        }
+
+        let generics: Vec<_> = generics
+            .iter()
+            .map(|&DescriptorVar(idx)| self.tys.get(idx).cloned())
+            .collect::<Option<_>>()
+            .ok_or(CommandError::BAD_REGISTER)?;
+
+        for (tyvar, tyarg) in signature.vars.iter().zip(&generics) {
+            // FIXME: fully validate generics. We need to know specifics about a type variable, in
+            // particular its locally known bounds, and a system to query these bounds. We just
+            // incidentally do not yet have any such bounds.
+            let _ = (tyvar, tyarg);
+        }
+
+        let mut signature = signature.clone();
+
+        for param in signature.input.iter_mut() {
+            *param = param.rewrite(&generics);
+        }
+
+        for param in signature.output.iter_mut() {
+            *param = param.rewrite(&generics);
+        }
+
+        Ok(self.push(Op::Function {
+            function,
+            generics,
+            signature,
+        }))
+    }
+
     /// Declare an invocation of a separate, possibly generic, function.
     pub fn invoke(
         &mut self,
@@ -919,6 +1018,26 @@ impl CommandBuffer {
         });
 
         Ok(results)
+    }
+
+    pub fn map(&mut self, list: Register, function: Register) -> Result<Register, CommandError> {
+        let RegisterDescription::List(bounds) = self.describe_reg(list) else {
+            return Err(CommandError::TYPE_ERR);
+        };
+
+        let RegisterDescription::Function { signature } = self.describe_reg(function) else {
+            return Err(CommandError::TYPE_ERR);
+        };
+
+        let [output] = signature.output.as_slice() else {
+            return Err(CommandError::INVALID_CALL);
+        };
+
+        let [input] = signature.input.as_slice() else {
+            return Err(CommandError::INVALID_CALL);
+        };
+
+        todo!()
     }
 
     /// Declare an image as input.
@@ -2282,6 +2401,7 @@ impl Linker {
                     last_use[invocation] = last_use[invocation].max(idx);
                     first_use[invocation] = first_use[invocation].min(idx);
                 }
+                Op::Function { .. } => todo!(),
             }
         }
 
@@ -2521,7 +2641,7 @@ impl Linker {
                         }
                         UnaryOp::ChromaticAdaptation(adaptation) => {
                             // Determine matrix for converting to xyz, then adapt, then back.
-                            let adapt = RowMatrix::new(adaptation.to_matrix()?);
+                            let adapt = adaptation.to_matrix()?;
                             let output = adapt.multiply_right(adaptation.to_xyz_matrix.into());
                             let matrix = adaptation.from_xyz_matrix.multiply_right(output);
 
@@ -2915,6 +3035,7 @@ impl CommandBuffer {
             Some(Op::BufferInit { desc, .. })
             | Some(Op::BufferUnary { desc, .. })
             | Some(Op::BufferBinary { desc, .. }) => RegisterDescription::Buffer(desc),
+            Some(Op::Function { signature, .. }) => RegisterDescription::Function { signature },
         }
     }
 
@@ -3201,8 +3322,8 @@ impl<'lt> RegisterDescription<'lt> {
     }
 }
 
-impl TyVarBounds {
-    pub fn contains_bounds(&self, actual: &TyVarBounds) -> bool {
+impl TyVarDef {
+    pub fn contains_bounds(&self, actual: &TyVarDef) -> bool {
         self.is_empty() && actual.is_empty()
     }
 
@@ -3272,18 +3393,41 @@ impl ColorConversion {
 }
 
 impl ChromaticAdaptation {
-    pub(crate) fn to_matrix(&self) -> Result<[f32; 9], CompileError> {
+    pub(crate) fn to_matrix(&self) -> Result<RowMatrix, CompileError> {
         use palette::{
-            chromatic_adaptation::{Method, TransformMatrix},
-            white_point as wp,
+            lms::matrix::{LmsToXyz, XyzToLms},
+            white_point as wp, Xyz,
         };
+
+        fn whitepoint_cone_adaptation<T: XyzToLms<f32> + LmsToXyz<f32>>(
+            lhswp: Xyz<wp::Any, f32>,
+            rhswp: Xyz<wp::Any, f32>,
+        ) -> RowMatrix {
+            let lhswp = [lhswp.x, lhswp.y, lhswp.z];
+            let rhswp = [rhswp.x, rhswp.y, rhswp.z];
+
+            let from = RowMatrix::new(<T as XyzToLms<f32>>::xyz_to_lms_matrix());
+            let to = RowMatrix(<T as LmsToXyz<f32>>::lms_to_xyz_matrix());
+
+            let resp_src = from.multiply_column(lhswp);
+            let resp_dst = from.multiply_column(rhswp);
+
+            let gain = RowMatrix::diag(
+                resp_dst[0] / resp_src[0],
+                resp_dst[1] / resp_src[1],
+                resp_dst[2] / resp_src[2],
+            );
+
+            let tmp = gain.multiply_right(from.to_col());
+            to.multiply_right(tmp).to_row()
+        }
 
         // FIXME: when you adjust the value-to-type translation, also adjust it within `method`.
         macro_rules! translate_matrix {
-            ($source:expr, $target:expr, $($lhs:ident => $lhsty:ty)|*) => {
+            ($source:expr, $target:expr, $ty:ty, $($lhs:ident => $lhsty:ty)|*) => {
                 $(
                     translate_matrix!(
-                        @$source, $target, $lhs => $lhsty :
+                        @$source, $ty, $target, $lhs => $lhsty :
                         A => wp::A | B => wp::B | C => wp::C
                         | D50 => wp::D50 | D55 => wp::D55 | D65 => wp::D65
                         | D75 => wp::D75 | E => wp::E | F2 => wp::F2
@@ -3291,25 +3435,22 @@ impl ChromaticAdaptation {
                     );
                 )*
             };
-            (@$source:expr, $target:expr, $lhs:ident => $lhsty:ty : $($rhs:ident => $ty:ty)|*) => {
+            (@$source:expr, $mat:ty, $target:expr, $lhs:ident => $lhsty:ty : $($rhs:ident => $ty:ty)|*) => {
                 $(
                     if let (Whitepoint::$lhs, Whitepoint::$rhs) = ($source, $target) {
-                        return Ok((|method| {
-                            let lhswp = <$lhsty as wp::WhitePoint<f32>>::get_xyz();
-                            let rhswp = <$ty as wp::WhitePoint<f32>>::get_xyz();
-                            <Method as TransformMatrix<f32>>::generate_transform_matrix(method, lhswp, rhswp)
-                        })
-                                  as fn(&Method) -> [f32;9]);
+                        let lhswp = <$lhsty as wp::WhitePoint<f32>>::get_xyz();
+                        let rhswp = <$ty as wp::WhitePoint<f32>>::get_xyz();
+                        return Ok(whitepoint_cone_adaptation::<$mat>(lhswp, rhswp));
                     }
                 )*
             };
         }
 
-        // FIXME: when you adjust the value-to-type translation, also adjust it within
-        // `translate_matrix!`
-        let method = (|| {
+        fn xyz_method<T: XyzToLms<f32> + LmsToXyz<f32>>(
+            this: &ChromaticAdaptation,
+        ) -> Result<RowMatrix, CompileError> {
             translate_matrix! {
-                self.source, self.target,
+                this.source, this.target, T,
                 A => wp::A | B => wp::B | C => wp::C
                 | D50 => wp::D50 | D55 => wp::D55 | D65 => wp::D65
                 | D75 => wp::D75 | E => wp::E | F2 => wp::F2
@@ -3317,20 +3458,20 @@ impl ChromaticAdaptation {
             };
 
             Err(CompileError::NotYetImplemented)
-        })()?;
+        }
 
-        let matrices = method(match self.method {
+        match self.method {
             // Bradford's original method that does slight blue non-linearity is not yet supported.
             // Please implement the paper if you feel compelled to.
-            ChromaticAdaptationMethod::BradfordNonLinear => {
-                return Err(CompileError::NotYetImplemented)
+            ChromaticAdaptationMethod::BradfordNonLinear => Err(CompileError::NotYetImplemented),
+            ChromaticAdaptationMethod::BradfordVonKries => {
+                xyz_method::<palette::lms::matrix::Bradford>(self)
             }
-            ChromaticAdaptationMethod::BradfordVonKries => &Method::Bradford,
-            ChromaticAdaptationMethod::VonKries => &Method::VonKries,
-            ChromaticAdaptationMethod::Xyz => &Method::XyzScaling,
-        });
-
-        Ok(matrices)
+            ChromaticAdaptationMethod::VonKries => {
+                xyz_method::<palette::lms::matrix::VonKries>(self)
+            }
+            ChromaticAdaptationMethod::Xyz => xyz_method::<palette::lms::matrix::UnitMatrix>(self),
+        }
     }
 }
 

@@ -1,0 +1,10 @@
+[package]
+name = "magick-script"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+image-canvas.workspace = true
+strum = { version = "0.28", features = ["derive"] }
+pic-scale-safe = { version = "0.1", optional = true }

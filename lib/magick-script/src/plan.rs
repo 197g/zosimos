@@ -42,7 +42,7 @@ pub struct ExecutionPlan {
 /// store those in the [`FilePlan`] for the image when it the input execution step is created (see
 /// [`ExecutionStep::InputFile`] for this particular subtlety).
 #[derive(Debug)]
-enum ExecutionStep {
+pub enum ExecutionStep {
     /// Apply an operation to all images in the current list of images (in imagemagick lingo, image
     /// stack). <https://imagemagick.org/script/command-line-processing.php#stack>
     ///
@@ -70,6 +70,7 @@ enum ExecutionStep {
     /// magick -extract 20x20 rose: +write 'null:' out.png # out is a 20x20 file
     /// ```
     InputFile(FilePlan),
+    /// Write an image to the output file system or virtual fs.
     Write(Location, Option<FileFormat>),
 }
 
@@ -303,6 +304,14 @@ impl ExecutionPlan {
             ColorModel::Luma => image_canvas::color::Color::SRGB_LUMA,
             ColorModel::Rgb => image_canvas::color::Color::SRGB,
         }
+    }
+
+    /// Get the sequence of execution steps.
+    ///
+    /// Should be called after `set_output_file`, or when setup with args. See
+    /// [`crate::args::parse_args`].
+    pub fn execution(&self) -> &[ExecutionStep] {
+        &self.execution
     }
 }
 
